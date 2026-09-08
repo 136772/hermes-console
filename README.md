@@ -11,7 +11,7 @@
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 Plain Flask + hand-drawn Canvas. **No frontend build, no chart library, no `node_modules`.**
-3 pip dependencies. 46 API endpoints. 12 views. 12 alert channels.
+3 pip dependencies. 40 API endpoints. 12 views. 12 alert channels. 29 smoke tests + CI.
 
 ---
 
@@ -47,11 +47,13 @@ And it lets you fix things from a browser instead of SSH-ing into the box at 1am
 | **Config** | Edit `config.yaml` / `.env` / `SOUL.md` / skills / cron in-browser | Stop hand-editing YAML over SSH |
 | **Cost** | Token + spend by day/week/month, per-model breakdown, budget alerts | Monitoring tells you it broke. Cost tells you whether to keep it. |
 | **Alerts** | 12 channels, schema-driven forms, per-channel test button | Find out it died, don't discover it |
-| **Skills / Memory** | List, disable, restore, install from Hub | Bloat is the quietest way agents degrade |
+| **Skills / Memory** | List, disable, restore, archive, install from Hub | Bloat is the quietest way agents degrade |
 | **Cron** | Toggle scheduled jobs (renames to `.disabled`, never deletes) | Attackers love crontab |
 | **Audit** | Who changed what, when, from where, old → new | The confidence to let a web UI edit config |
 | **Health / Security** | Run your existing check scripts, raw output | Reuse what you already have |
 | **Dashboard** | Embeds the **official Hermes web dashboard** (19 pages) via an authenticated proxy | Sessions, files, logs, analytics, profiles, channels — and it gets better as upstream ships |
+| **Functions** | Command deck for Hermes: `doctor` / `update` / `memory` / `curator` / `session` / `skills` / `mcp` / `tools` / `model` / `profile`, whitelist-gated | Anything the CLI can do, from a browser |
+| **System** | Version + upstream diff, **one-click upgrade for Hermes and for the console itself**, run `doctor`, change your password | Stop hand-running git and update commands |
 
 ### Three-tier liveness probe
 
@@ -100,6 +102,34 @@ Or one line:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/136772/hermes-console/main/install.sh | bash
 ```
+
+### install.sh options
+
+| Flag | What it does | Default |
+|---|---|---|
+| `--action` | `install` console only · **`hermes+dash` install Hermes + console together** · `update` console only | asks |
+| `--mode` | `docker` · `host` · `systemd` (host + autostart) | asks |
+| `--hermes-dir PATH` | Hermes data dir **on the host** (always mounted to `/opt/data` in-container) | `/opt/hermes/data` |
+| `--port` | Console port | `8080` |
+| `--uid` | Run-as UID (match Hermes's) | `1001` |
+| `--quota MB` | Quota, drives percentage + alerts | `10240` |
+| `--container NAME` | Hermes container name | `hermes` |
+| `--danger-token` | Token required for restart/upgrade | **auto-generated** |
+| `--budget-daily` / `--budget-monthly` | Budgets (CNY) | `0` (off) |
+| `--tz` | Timezone | `Asia/Shanghai` |
+| `--repo OWNER/REPO` | Repo to diff against for self-update | empty |
+| `--cn-mirror` / `--no-cn-mirror` | Force regional mirrors on/off | auto-detect |
+| `-y`, `--yes` | Skip all prompts | off |
+
+```bash
+./install.sh                                       # interactive (recommended first run)
+./install.sh --action hermes+dash --mode docker    # fresh machine: Hermes + console
+./install.sh --mode host --hermes-dir /data/hermes --port 9000
+./install.sh --action update                       # update the console only
+```
+
+> `--action hermes+dash` is for a **fresh machine** — it installs Hermes itself plus the console.
+> If Hermes is already running, use `--action install`: it only adds the console and doesn't touch your existing Hermes.
 
 ### Manual
 
@@ -167,7 +197,7 @@ Container mode already has `restart: unless-stopped`.
 | `HERMES_API` | `http://127.0.0.1:9119` | Official dashboard backend (for the embedded view) |
 | `PROXY_TIMEOUT` | `300` | Proxy timeout (seconds) |
 
-Full list in [README.zh-CN.md](README.zh-CN.md#三环境变量).
+Full list in [README.zh-CN.md](README.zh-CN.md#八环境变量).
 
 ---
 
@@ -207,7 +237,7 @@ hermes dashboard --port 9119
 
 ## API
 
-46 endpoints. Highlights:
+40 endpoints (plus `/` and the `/proxy/<path>` layer). Highlights:
 
 | Path | Method | Notes |
 |---|---|---|
@@ -224,7 +254,7 @@ hermes dashboard --port 9119
 | `/api/mcp` | GET/POST | MCP servers |
 | `/api/audit` | GET | Change audit (last 120) |
 
-Full table in [README.zh-CN.md](README.zh-CN.md#八api).
+Full table in [README.zh-CN.md](README.zh-CN.md#十五api).
 
 ---
 

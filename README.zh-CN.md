@@ -11,7 +11,8 @@
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 纯 Flask + 原生 Canvas，**无前端构建、无第三方图表库、无外部监控依赖**。
-3 个 pip 依赖，46 个 API，12 个视图，12 种告警渠道，零 node_modules。
+3 个 pip 依赖，40 个 API，12 个视图，12 种告警渠道，零 node_modules。
+29 项冒烟测试 + GitHub Actions CI。
 
 ---
 
@@ -46,6 +47,38 @@ cd hermes-console
 curl -fsSL https://raw.githubusercontent.com/136772/hermes-console/main/install.sh | bash
 ```
 
+### install.sh 参数
+
+| 参数 | 说明 | 默认 |
+|---|---|---|
+| `--action` | `install` 只装工作台 / **`hermes+dash` 工作台+Hermes 一起装** / `update` 只更新工作台 | 交互式问 |
+| `--mode` | `docker` / `host` 宿主机 / `systemd` 宿主机+开机自启 | 交互式问 |
+| `--hermes-dir PATH` | **宿主机上**的 Hermes 数据目录（容器内统一挂到 `/opt/data`） | `/opt/hermes/data` |
+| `--port PORT` | 工作台端口 | `8080` |
+| `--uid UID` | 运行用户 UID（建议和 Hermes 对齐） | `1001` |
+| `--quota MB` | 配额，用于算百分比和告警 | `10240` |
+| `--container NAME` | Hermes 容器名 | `hermes` |
+| `--danger-token` | 危险动作令牌（重启/升级要填对） | **自动生成** |
+| `--budget-daily` / `--budget-monthly` | 日/月预算（元） | `0`（不限） |
+| `--tz` | 时区 | `Asia/Shanghai` |
+| `--repo OWNER/REPO` | 自更新比对用的仓库 | 空 |
+| `--cn-mirror` / `--no-cn-mirror` | 强制配 / 不配国内源 | 自动检测 |
+| `-y` / `--yes` | 跳过所有确认 | 关 |
+| `--help` | 看帮助 | — |
+
+**常用组合**：
+
+```bash
+./install.sh                                          # 交互式（推荐第一次用）
+./install.sh --action install --mode docker --yes     # Docker 模式静默装工作台
+./install.sh --action hermes+dash --mode docker       # 连 Hermes 一起装
+./install.sh --mode host --hermes-dir /data/hermes --port 9000
+./install.sh --action update                          # 只更新工作台
+```
+
+> `--action hermes+dash` 是给**全新机器**准备的：Hermes 本体 + 工作台一步到位。
+> 已经跑着 Hermes 的机器用 `--action install` 就行，脚本只会加工作台，不碰你现有的 Hermes。
+
 **手动部署**：
 
 ```bash
@@ -72,22 +105,28 @@ python app.py
 
 ---
 
+## 一、12 个视图
+
+一共 **12 个视图**：
+
 | 页 | 内容 | 为什么值得盯 |
 |---|---|---|
-| **总览** | 6 张状态卡（运行状态 / 配额用量 / 记忆文件 / 活跃技能 / 24h 错误 / 系统负载）+ 60 分钟趋势图 + 系统资源条 + 最近错误样本 | 一眼判断"今天它正不正常" |
+| **总览** | 6 张状态卡（运行状态 / 配额用量 / 记忆文件 / 活跃技能 / 24h 错误 / 系统负载）+ 60 分钟趋势图 + 系统资源条 + 最近错误样本 + **三级活体探测** | 一眼判断"今天它正不正常"。探测分三级：进程可达 → 数据可写 → 模型连通，详见[活体探测为什么要分三级](#活体探测为什么要分三级) |
 | **对话** | 网页里直接给 Hermes 下指令，带耗时显示和 4 个快捷指令。**流式模式**逐 token 返回 + 工具调用可视化卡片 | 不用 SSH 进 NAS 也能使唤它 |
 | **配置** | 五个子页：配置文件编辑器 / MCP 服务器 / Provider 与 Key / **对话接口** / 系统动作 | **以后再也不用进后台改东西** |
-| **技能** | 列出所有技能及 `description`，可禁用、恢复、从 Hub 安装 | 技能膨胀 / 被塞了陌生技能，一眼看见 |
+| **成本** | 今日 / 7 天 / 30 天 token 与花费，按模型分解，30 天柱状图；预算与告警渠道管理 | 监控告诉你它坏没坏，成本告诉你**值不值得继续养** |
+| **技能** | 列出所有技能及 `description`，可禁用、恢复、归档、从 Hub 安装 | 技能膨胀 / 被塞了陌生技能，一眼看见 |
 | **记忆** | 列出记忆文件与体积 | 记忆膨胀是最隐蔽的退化源 |
 | **任务** | 定时任务启停（改名 `.disabled`，不删除） | 攻击者常在 cron 留后门 |
 | **体检** | 一键跑 `health-check.sh` / `security-check.sh`，原文输出 | 复用你已经有的脚本，不重复造轮子 |
 | **记录** | 变更审计：谁在什么时候把什么从哪改到哪 | 网页改配置的底气来源 |
 | **仪表盘** | 整页嵌入 Hermes 官方 Web 仪表盘（FastAPI + React SPA，19 个页面） | 会话/文件/日志/分析/多身份/IM 渠道一次全有，随上游更新自动变强 |
-| **活体探测** | 三级探测：进程可达 → 数据可写 → 模型连通 | "进程在"≠"能干活"，最后一公里要单独验 |
+| **功能** | Hermes 命令台：doctor / update / memory / curator / session / skills / mcp / tools / model / profile，白名单放行 | Hermes CLI 能干的，在网页里点点就行 |
+| **系统** | 版本号 + 上游版本比对、**一键升级 Hermes / 升级工作台（git pull）**、跑 doctor、修改登录密码 | 不用再手敲 git 和 update |
 
 ---
 
-## 一之三、成本与告警（v2 新增）
+## 二、成本与告警
 
 监控解决"它有没有坏"，成本解决"**养它值不值**"——后者才是你真正会天天看的东西。
 
@@ -148,7 +187,7 @@ python app.py
 
 ---
 
-## 一之二、配置中心：从"看"到"改"
+## 三、配置中心：从"看"到"改"
 
 这是从监控面板升级成**控制台**的部分。目标是一个：**以后再也不用 SSH 进后台**。
 
@@ -213,7 +252,7 @@ python app.py
 
 ---
 
-## 二、部署：三种方式，按需要选
+## 四、部署：三种方式，按需要选
 
 ### 方式 A：装在 NAS 宿主机上（推荐）
 
@@ -250,7 +289,7 @@ docker compose up -d --build
 
 ---
 
-## 二之丙、开机自启与进程守护（必做，不然 NAS 重启就失联）
+## 五、开机自启与进程守护（必做）
 
 前几版靠 `nohup` 起的进程，**NAS 重启即失联，崩了也不会自起**——你以为在监控，其实监控早挂了。这一版给了两只"看门狗"：
 
@@ -275,7 +314,7 @@ systemctl daemon-reload && systemctl enable --now hermes-console
 
 ---
 
-## 二之甲、国内镜像源（pip / docker / git / npm）
+## 六、国内镜像源（pip / docker / git / npm）
 
 国内网络拉官方镜像和 PyPI 很容易超时。一次性配好四类源，后面省心：
 
@@ -304,7 +343,7 @@ systemctl daemon-reload && systemctl enable --now hermes-console
 
 ---
 
-## 二之乙、Hermes 和工作台，要在一个用户里吗？怎么连？
+## 七、Hermes 和工作台，要在一个用户里吗？怎么连？
 
 **先给结论：不强制同一用户，但我强烈建议工作台也以 `hermes`（UID 1001）身份跑。**
 
@@ -349,7 +388,7 @@ systemctl daemon-reload && systemctl enable --now hermes-console
 
 如果你**坚决不要 docker.sock**：把 `HERMES_MODE` 设成 `local`，并在宿主机也装一份 Hermes CLI，
 对话就走本地命令（前提是宿主机有 `hermes` 可执行）。但更省事的做法通常是：**Hermes 本来就跑容器，
-那就接受 docker.sock**，只要面板不暴露公网就行（详见第四节）。
+那就接受 docker.sock**，只要面板不暴露公网就行（详见[第十一节](#十一安全权衡这部分请务必读)）。
 
 ### 一键接好
 
@@ -358,11 +397,11 @@ systemctl daemon-reload && systemctl enable --now hermes-console
 
 ---
 
-## 三、环境变量
+## 八、环境变量
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `HERMES_DIR` | `/opt/data` | Hermes 数据目录（容器内是挂载点） |
+| `HERMES_DIR` | `/opt/data` | Hermes 数据目录。**容器内**是挂载点（固定 `/opt/data`）；**宿主机部署**时填真实路径，`install.sh --hermes-dir` 默认 `/opt/hermes/data` |
 | `HERMES_MODE` | `auto` | `docker` / `local` / `auto`；`auto` 会扫 `docker ps` 里名字带 hermes 的容器 |
 | `HERMES_CONTAINER` | `hermes` | docker 模式下的容器名 |
 | `QUOTA_MB` | `10240` | 你给 Hermes 设的配额，用于算百分比和告警阈值 |
@@ -385,7 +424,7 @@ systemctl daemon-reload && systemctl enable --now hermes-console
 
 ---
 
-## 三之二、可持续升级（不用再手敲 git）
+## 九、可持续升级（不用再手敲 git）
 
 工作台把"升级"也做进了页面（顶部「系统」页），分两种：
 
@@ -402,7 +441,7 @@ systemctl daemon-reload && systemctl enable --now hermes-console
 
 ---
 
-## 三之三、官方仪表盘嵌入（代理模式）
+## 十、官方仪表盘嵌入（代理模式）
 
 工作台新增「仪表盘」页，**整页嵌入 Hermes 官方 Web 仪表盘**（FastAPI + React SPA，19 个页面）——会话浏览、文件管理、实时日志、用量分析、多身份 Profile、IM 渠道、Cron 蓝图编排、技能内容编辑等，一次全有。
 
@@ -427,7 +466,7 @@ hermes dashboard --port 9119
 
 ---
 
-## 四、安全权衡（这部分请务必读）
+## 十一、安全权衡（这部分请务必读）
 
 工作台默认**只读**：所有采集都是 `du` / `find` / 读 `/proc`。
 但一旦你要用配置中心，就有三处例外，**都是你主动点按钮才会发生**：
@@ -437,7 +476,7 @@ hermes dashboard --port 9119
    只在局域网 / Tailscale / 飞牛反代 + 强认证后面用。
 
 2. **`/opt/data` 必须改成 `rw` 挂载** —— 这是配置中心的硬性前提。
-   补偿措施（四道护栏见上一节）已经把风险压到最低，但**挂载本身确实变宽了**。
+   补偿措施（见[四道护栏](#四道护栏没有这些我就不敢做网页改配置)）已经把风险压到最低，但**挂载本身确实变宽了**。
    如果你只需要监控，**保持 `:ro` 并把 `DASH_READ_ONLY` 设成 1**，配置中心会显示"只读模式"。
    注意：备份和审计日志写在 `/opt/data/.dashboard/` 下，**会占 Hermes 的 10G 配额**，
    单个文件留 30 份，实测几百 KB 量级，可忽略。
@@ -451,7 +490,7 @@ hermes dashboard --port 9119
 再补一条实践建议：**给 `DASH_DANGER_TOKEN` 设一个长随机串**。
 没有它，页面上的「重启 Hermes」对任何能打开页面的人都是可点的 —— 包括你误点的自己。
 
-### 4.1 登录鉴权（v3 默认开启，安全优先）
+### 11.1 登录鉴权（默认开启，安全优先）
 
 工作台现在**默认需要登录**，而且是「单密码、无用户名」的设计：
 
@@ -469,7 +508,7 @@ hermes dashboard --port 9119
 
 ---
 
-## 五、告警阈值（改代码里的这几行即可）
+## 十二、告警阈值（改代码里的这几行即可）
 
 在 `static/app.js` 的 `renderOverview()`：
 
@@ -485,7 +524,7 @@ hermes dashboard --port 9119
 
 ---
 
-## 六、已知的两个"反直觉"设计
+## 十三、四个"反直觉"设计
 
 1. **进程检测不用 `pgrep -f hermes`**
    任何命令行里带 "hermes" 字样的进程都会被算进去（本工作台自己就叫 hermes-console），
@@ -507,32 +546,46 @@ hermes dashboard --port 9119
 
 ---
 
-## 七、文件清单
+## 十四、文件清单
 
 ```
 hermes-console/
-├── app.py                 # Flask 后端：采集 + 登录守卫 + 40+ 个 API
-├── auth.py                # 登录鉴权：PBKDF2 哈希 + 初始密码文件 + 强制改密 + 失败锁定
-├── hermes_ctl.py          # 控制层：文件/MCP/env/cron/技能/备份/审计/配置开关/Hermes 命令
-├── cost.py                # token 与成本统计、价格表、预算
-├── notify.py              # 告警推送（12 种渠道，含飞书加签/Slack/Bark/PushPlus/Server酱/Gotify/自定义）+ 冷却
-├── VERSION                # 当前版本号（页面「系统」展示，容器内自更新比对用）
-├── templates/index.html   # 单页，10 个视图（含登录层 + 功能 + 系统）
+├── app.py                  # Flask 后端：采集 + 登录守卫 + 40 个 API（1240 行）
+├── auth.py                 # 登录鉴权：PBKDF2 哈希 + 初始密码文件 + 强制改密 + 失败锁定
+├── hermes_ctl.py           # 控制层：文件/MCP/env/cron/技能/备份/审计/配置开关/Hermes 命令
+├── cost.py                 # token 与成本统计、价格表、预算
+├── notify.py               # 告警推送（12 种渠道：飞书加签/Slack/Bark/PushPlus/Server酱/Gotify/自定义…）+ 冷却
+├── VERSION                 # 当前版本号（页面「系统」展示，自更新比对用）
+├── templates/index.html    # 单页，12 个视图 + 登录层
 ├── static/
-│   ├── style.css          # 深色科技风，纯 CSS 变量主题
-│   └── app.js             # Canvas 手绘趋势图 + 对话 + 配置中心 + 60s 自动刷新
-├── health-check.sh        # 运行时体检（从调教包复用）
-├── security-check.sh      # 安全基线自检（从调教包复用）
-├── Dockerfile
-├── docker-compose.yml     # 工作台容器：user 1001 + 数据目录 rw + docker.sock（对话用）
-├── .env.example           # 方式 A 宿主机部署的环境变量模板
-├── start-dash.sh          # 方式 A 启动 + 看门狗（30s 保活），支持 --daemon
+│   ├── style.css           # 深色科技风 + 亮色主题，纯 CSS 变量
+│   └── app.js              # Canvas 手绘趋势图 + 流式对话 + 配置中心 + 60s 自动刷新
+├── install.sh              # ★ 通用一键部署脚本（747 行）：自动识别系统/架构/国内源，三选一模式
+├── health-check.sh         # 运行时体检
+├── security-check.sh       # 安全基线自检
+├── start-dash.sh           # 启动 + 看门狗（30s 保活），支持 --daemon
+├── fnos-setup.sh           # 飞牛一键准备：国内源 + hermes 用户 + 数据目录 + 连接自检
 ├── hermes-console.service  # systemd 单元模板（开机自启，FNOS 可用）
-├── fnos-setup.sh          # 飞牛一键准备：国内源 + hermes 用户 + 数据目录 + 连接自检
-└── requirements.txt       # 只依赖 Flask + ruamel.yaml（告警全用标准库）
+├── Dockerfile
+├── docker-compose.yml      # 工作台容器：user 1001 + 数据目录 rw + docker.sock（对话用）
+├── .env.example            # 环境变量模板
+├── test_smoke.py           # 冒烟测试：29 项（含鉴权、代理层、SSE、配置读写）
+├── requirements.txt        # 只依赖 Flask + ruamel.yaml + requests（告警全用标准库）
+├── docs/
+│   ├── screenshots/        # 4 张真实截图
+│   └── PROMOTION.md        # 推广物料：上游 PR 草稿 + Reddit/HN/博客文案
+├── .github/
+│   ├── workflows/          # ci.yml（语法 + 测试）、docker.yml（Docker Hub 多架构构建）
+│   ├── ISSUE_TEMPLATE/     # Bug / Feature 模板（中英双语）
+│   └── PULL_REQUEST_TEMPLATE.md
+├── CONTRIBUTING.md
+├── CHANGELOG.md
+├── LICENSE                 # MIT
+├── README.md               # 英文版
+└── README.zh-CN.md         # 本文件
 ```
 
-## 八、API
+## 十五、API
 
 **监控类**
 
@@ -565,9 +618,12 @@ hermes-console/
 | `/api/providers/apply` | POST | 一键切换 Provider |
 | `/api/chatapi` | GET/POST | **对话接口**：读 / 写 `config.yaml` 的 `model` + `.env` 密钥 / Base URL |
 | `/api/skills/toggle` `/api/skills/install` | POST | 归档/恢复 / 从 Hub 安装 |
+| `/api/skills/archived` | GET | 已归档技能列表 |
 | `/api/cron` `/api/cron/toggle` | GET/POST | 定时任务列表 / 启停 |
 | `/api/action` | POST | `restart` / `upgrade` / `reload-mcp` |
 | `/api/audit` | GET | 变更审计（最近 120 条） |
+
+> 共 **40 个 API 端点**（另有 `/` 页面 与 `/proxy/<path>` 代理层）。
 
 **成本与告警**
 
