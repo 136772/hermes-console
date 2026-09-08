@@ -42,3 +42,6 @@ htmlcov/
 # Node（如果以后加前端构建）
 node_modules/
 npm-debug.log*
+
+# 推送脚本（含私钥，绝不能提交）
+push-to-github.sh

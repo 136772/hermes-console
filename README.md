@@ -12,6 +12,18 @@
 
 ---
 
+## 截图
+
+| 总览 | 对话 |
+|:---:|:---:|
+| ![overview](docs/screenshots/01-overview.png) | ![chat](docs/screenshots/02-chat.png) |
+
+| 成本 | 配置 |
+|:---:|:---:|
+| ![cost](docs/screenshots/03-cost.png) | ![config](docs/screenshots/04-config.png) |
+
+---
+
 ## Quick Start
 
 **下载后跑安装脚本（推荐）**：
