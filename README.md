@@ -5,6 +5,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.11+-green)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ed)
+![CI](https://github.com/136772/hermes-console/actions/workflows/ci.yml/badge.svg)
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 纯 Flask + 原生 Canvas，**无前端构建、无第三方图表库、无外部监控依赖**。
@@ -29,7 +30,7 @@
 **下载后跑安装脚本（推荐）**：
 
 ```bash
-git clone https://github.com/<你的用户名>/hermes-console.git
+git clone https://github.com/136772/hermes-console.git
 cd hermes-console
 ./install.sh
 ```
@@ -37,15 +38,17 @@ cd hermes-console
 脚本会自动识别系统、检测国内网络配镜像源、交互式问你参数（全部有默认值，回车即可）。
 也支持纯参数模式：`./install.sh --action install --mode docker --yes`
 
-> 想一行启动的话，把 `install.sh` 传到你自己的仓库后，用
-> `curl -fsSL https://raw.githubusercontent.com/<你的用户名>/hermes-console/main/install.sh | bash`
-> （**记得先把 `<你的用户名>` 换成你的 GitHub 名**，本文档里所有尖括号占位都要替换）
+想一行启动的话：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/136772/hermes-console/main/install.sh | bash
+```
 
 **手动部署**：
 
 ```bash
 # 1. 拉代码
-git clone https://github.com/<你的用户名>/hermes-console.git
+git clone https://github.com/136772/hermes-console.git
 cd hermes-console
 
 # 2. 装依赖（就 3 个）
