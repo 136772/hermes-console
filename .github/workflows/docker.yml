@@ -1,0 +1,68 @@
+name: Docker
+
+# 推送镜像到 Docker Hub。需要在仓库 Settings → Secrets 配：
+#   DOCKERHUB_USERNAME   你的 Docker Hub 用户名
+#   DOCKERHUB_TOKEN      Docker Hub → Account Settings → Security → New Access Token
+# 没配这两个 secret 时会自动跳过，不会让 CI 变红。
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 检查 secrets / Check secrets
+        id: guard
+        run: |
+          if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ] || [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN 未配置，跳过镜像推送"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU
+        if: steps.guard.outputs.skip == 'false'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        if: steps.guard.outputs.skip == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: steps.guard.outputs.skip == 'false'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker meta
+        if: steps.guard.outputs.skip == 'false'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/hermes-console
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # NAS 用户很多是 ARM（飞牛、群晖部分型号），所以同时构建 amd64 + arm64
+      - name: Build and push
+        if: steps.guard.outputs.skip == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            PIP_INDEX=https://pypi.org/simple
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

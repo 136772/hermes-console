@@ -8,8 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-# 国内镜像：清华 PyPI 源（部署在飞牛/国内机器时拉包快很多）
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
+# 默认走清华 PyPI 源（国内机器拉包快很多）；
+# 需要默认 PyPI 时：--build-arg PIP_INDEX=https://pypi.org/simple
+ARG PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --no-cache-dir -i ${PIP_INDEX} \
         -r requirements.txt
 
 COPY app.py hermes_ctl.py cost.py notify.py auth.py ./

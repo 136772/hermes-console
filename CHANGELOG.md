@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-09-09
+
+### Added
+- **英文 README**：主 README 改为英文（面向国际用户重写，非直译），中文版保留为 `README.zh-CN.md`，两版顶部互相链接
+- **社区文件**：`CONTRIBUTING.md`、Issue 模板（Bug / Feature，中英双语）、PR 模板
+- **Docker Hub 自动构建**：`.github/workflows/docker.yml`，打 `v*.*.*` tag 时构建并推送 **amd64 + arm64** 多架构镜像；未配置 secrets 时自动跳过，不影响 CI
+- **推广物料**：`docs/PROMOTION.md` —— 上游 PR 草稿、Reddit / HN / X / 博客文案、Docker Hub 配置步骤
+
+### Changed
+- `Dockerfile` 的 PyPI 源改为 `ARG PIP_INDEX` 可配置，Docker Hub 构建时用官方 PyPI（`--build-arg PIP_INDEX=https://pypi.org/simple`）
+
 ## [1.3.0] - 2026-09-09
 
 ### Added

@@ -1,0 +1,80 @@
+name: Bug report
+description: 报告一个错误 / Report a bug
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    value: |
+      中英文都可以。Both Chinese and English are fine.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么 / What happened
+      description: 清晰描述问题
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为 / Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      placeholder: |
+        1. 打开「配置」页
+        2. 点击 ...
+        3. 看到 ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 部署方式 / Deployment mode
+      options:
+        - A - 宿主机 host
+        - B - 容器 docker compose
+        - C - 只读监控 read-only
+        - 不确定 / Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 系统与架构 / OS & arch
+      placeholder: "飞牛 FNOS 0.9 / Debian 12 / macOS 15 — x86_64 or aarch64"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / Version
+      description: 见「系统」页，或 `cat VERSION`
+      placeholder: "v1.3.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / Logs
+      description: 运行日志或浏览器控制台输出。别贴 API Key。Please redact credentials.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认 / Checklist
+      options:
+        - label: 我已脱敏所有密钥 / I redacted all credentials
+          required: true
+        - label: 我读过 README 的安全章节 / I read the security section
+          required: false

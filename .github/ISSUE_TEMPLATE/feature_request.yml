@@ -1,0 +1,52 @@
+name: Feature request
+description: 提一个新功能 / Suggest a feature
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你想解决什么问题 / What problem does this solve
+      description: |
+        说痛点，别只说方案 —— 知道"为什么"才能给出更好的做法。
+        Describe the pain, not just the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 你想要的方案 / Proposed solution
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的替代方案 / Alternatives considered
+    validations:
+      required: false
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 类型 / Type
+      options:
+        - 新告警渠道 / New alert channel
+        - 新页面或视图 / New view
+        - 新 API / New API
+        - 部署相关 / Deployment
+        - UI/UX
+        - 其他 / Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: fit
+    attributes:
+      label: 是否符合项目原则 / Project principles
+      description: 不符合的不一定拒绝，但请说明理由。
+      options:
+        - label: 不需要引入新的 pip / npm 依赖 / Adds no new dependency
+        - label: 不需要前端构建步骤 / Needs no frontend build step
+        - label: 只读模式（DASH_READ_ONLY=1）下依然安全 / Safe under read-only mode
