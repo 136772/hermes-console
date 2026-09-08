@@ -1,0 +1,76 @@
+services:
+  hermes-console:
+    build: .
+    container_name: hermes-console
+    restart: unless-stopped
+
+    # 用「和 Hermes 同一个 UID」跑，文件归属才会一致，10G 配额也才能真正约束工作台的写入。
+    # 飞牛上 hermes 用户通常是 1001；不准的话在 NAS 上 `id hermes` 查一下改这里。
+    user: "1001:1001"
+
+    ports:
+      - "8080:8080"          # 飞牛上若被占用，改左边，如 "18080:8080"
+
+    environment:
+      HERMES_DIR: /opt/data   # 容器内的挂载点（对应 Hermes 的 /opt/data）
+      HERMES_MODE: docker      # docker=用 docker exec 对话 | local=直接执行 hermes | auto=自动判断
+      HERMES_CONTAINER: hermes
+      QUOTA_MB: "10240"        # 改成你给 Hermes 设的配额（MB）
+      CHAT_TIMEOUT: "180"      # 对话超时（秒），复杂任务建议 300
+      SCRIPT_DIR: /app         # 巡检脚本所在目录
+      TZ: Asia/Shanghai
+      # 想用「配置中心」改配置就必须是 rw；只监控就设成 1
+      DASH_READ_ONLY: "0"
+      # 重启/升级前必须填对的令牌（强烈建议设置，否则任何人都能重启你的 agent）
+      DASH_DANGER_TOKEN: "改成一个你自己的长随机串"
+      # 升级按钮用的目录（放 Hermes 的 docker-compose.yml 的地方）
+      COMPOSE_DIR: /path/to/hermes-compose
+      # 预算（元）。0 = 不限制。超 80% 预警，超 100% 告警
+      BUDGET_DAILY: "0"
+      BUDGET_MONTHLY: "0"
+      ALERT_INTERVAL: "600"     # 告警巡检间隔（秒）
+
+      # ---- 登录鉴权（默认开启）----
+      # 部署后初始密码写入 HERMES_DIR/DASHBOARD_PASSWORD.txt，首次登录强制修改。
+      DASH_AUTH: "1"
+      SESSION_HOURS: "24"
+      # 走 HTTPS 反代时设 1
+      DASH_SECURE_COOKIE: "0"
+
+      # ---- 可持续升级 ----
+      # 工作台自更新（git pull）用的远端仓库 owner/repo；容器内部署请改用 compose pull。
+      # UPDATE_REPO: "你的名/hermes-console"
+
+      # ---- 官方仪表盘代理 ----
+      # Hermes 官方 Web 仪表盘后端地址（hermes dashboard 启动后的 FastAPI 服务）
+      # Docker 模式下 127.0.0.1 指向容器自身，需改用宿主机 IP 或共享 network：
+      #   http://172.17.0.1:9119  （默认 docker0 网桥）
+      #   http://hermes:9119       （同 network 下用容器名）
+      HERMES_API: "http://172.17.0.1:9119"
+      # 官方后端认证 token（可选，官方后端开启认证时填）
+      HERMES_API_TOKEN: ""
+      # 代理转发超时（秒）
+      PROXY_TIMEOUT: "300"
+
+    volumes:
+      # ⚠️ 要用配置中心，这里必须是 rw（不能 :ro）
+      # 想只监控不改，改回 :ro 并把 DASH_READ_ONLY 设成 1
+      # 改成你的 Hermes 数据目录实际路径
+      - /path/to/hermes/data:/opt/data
+
+      # 只有 HERMES_MODE=docker（网页对话 / 活体探测）才需要：
+      #   Hermes 是容器，工作台要用 docker exec 去敲它。
+      # 容器内已是 hermes 用户（1001），把宿主机 docker 组挂进去就能访问 socket。
+      # 宿主机 docker 组 GID 用 `getent group docker | cut -d: -f3` 查（常见 999 / 994）。
+      # ⚠️ docker.sock = 容器逃逸面，挂载即等同宿主机 root，只在信任的网络里开。
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # 把宿主机 docker 组的 GID 映射进容器，hermes 用户(1001) 才能访问 socket 去 docker exec。
+      # 用 `getent group docker | cut -d: -f3` 查实际 GID 替换 999（常见 999 / 994）。
+      group_add:
+        - "999"
+
+      # 升级按钮需要（可选）：把 Hermes 的 compose 目录挂进来
+      # - /path/to/hermes-compose:/compose
+
+    security_opt:
+      - no-new-privileges:true

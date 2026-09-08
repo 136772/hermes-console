@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes 工作台</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ 侧边栏 ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">H</div>
+      <div class="brand-text">
+        <div class="brand-name">Hermes</div>
+        <div class="brand-sub">工作台</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-view="overview"><span class="nav-ico">◈</span><span>总览</span></button>
+      <button class="nav-item" data-view="chat"><span class="nav-ico">◐</span><span>对话</span></button>
+      <button class="nav-item" data-view="config"><span class="nav-ico">⚙</span><span>配置</span></button>
+      <button class="nav-item" data-view="cost"><span class="nav-ico">¥</span><span>成本</span></button>
+      <button class="nav-item" data-view="skills"><span class="nav-ico">◧</span><span>技能</span></button>
+      <button class="nav-item" data-view="memory"><span class="nav-ico">◇</span><span>记忆</span></button>
+      <button class="nav-item" data-view="task"><span class="nav-ico">◷</span><span>任务</span></button>
+      <button class="nav-item" data-view="scan"><span class="nav-ico">◎</span><span>体检</span></button>
+      <button class="nav-item" data-view="audit"><span class="nav-ico">≡</span><span>记录</span></button>
+      <button class="nav-item" data-view="hermes"><span class="nav-ico">⌘</span><span>功能</span></button>
+      <button class="nav-item" data-view="dashboard"><span class="nav-ico">⊞</span><span>仪表盘</span></button>
+      <button class="nav-item" data-view="system"><span class="nav-ico">⚙</span><span>系统</span></button>
+    </nav>
+
+    <div class="side-foot">
+      <div class="side-row"><span>模式</span><b id="footMode">-</b></div>
+      <div class="side-row"><span>目录</span><b id="footDir" class="ellip">-</b></div>
+      <div class="side-row"><span>配额</span><b id="footQuota">-</b></div>
+      <div class="side-row"><span>写入</span><b id="footWrite">-</b></div>
+    </div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <main class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="dot" id="liveDot"></span>
+        <h1 id="viewTitle">总览</h1>
+        <span class="stamp" id="stamp">—</span>
+      </div>
+      <div class="topbar-right">
+        <span class="pill" id="pendingPill" hidden>有改动待重启</span>
+        <button class="btn ghost" id="btnTheme" title="切换亮/暗主题">◑</button>
+        <button class="btn ghost" id="btnProbe">活体探测</button>
+        <button class="btn ghost" id="btnLogout" title="退出登录">⎋ 登出</button>
+        <button class="btn" id="btnRefresh">刷新</button>
+      </div>
+    </header>
+
+    <!-- ---------- 总览 ---------- -->
+    <section class="view active" id="view-overview">
+
+      <div class="panel probe-panel" id="probePanel" hidden>
+        <div class="panel-head">
+          <h3>活体探测结果</h3>
+          <span class="hint" id="probeHint">—</span>
+        </div>
+        <div class="probe-steps" id="probeSteps"></div>
+      </div>
+
+      <div class="cards" id="cards">
+        <div class="card" data-key="status">
+          <div class="card-label">运行状态</div>
+          <div class="card-value" id="cStatus">—</div>
+          <div class="card-sub" id="cStatusSub">—</div>
+        </div>
+        <div class="card" data-key="quota">
+          <div class="card-label">配额用量</div>
+          <div class="card-value" id="cQuota">—</div>
+          <div class="bar"><i id="cQuotaBar"></i></div>
+        </div>
+        <div class="card" data-key="mem">
+          <div class="card-label">记忆文件</div>
+          <div class="card-value" id="cMem">—</div>
+          <div class="card-sub" id="cMemSub">—</div>
+        </div>
+        <div class="card" data-key="skills">
+          <div class="card-label">活跃技能</div>
+          <div class="card-value" id="cSkills">—</div>
+          <div class="card-sub" id="cSkillsSub">—</div>
+        </div>
+        <div class="card" data-key="err">
+          <div class="card-label">24h 错误</div>
+          <div class="card-value" id="cErr">—</div>
+          <div class="card-sub" id="cErrSub">—</div>
+        </div>
+        <div class="card" data-key="load">
+          <div class="card-label">系统负载</div>
+          <div class="card-value" id="cLoad">—</div>
+          <div class="card-sub" id="cLoadSub">—</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head"><h3>资源趋势</h3><span class="hint">最近 60 分钟</span></div>
+          <div class="chart-wrap"><canvas id="chartTrend"></canvas></div>
+          <div class="legend">
+            <span><i style="background:#00d4aa"></i>负载</span>
+            <span><i style="background:#6366f1"></i>内存 %</span>
+            <span><i style="background:#f59e0b"></i>配额 %</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h3>系统资源</h3><span class="hint" id="sysHint">—</span></div>
+          <div class="meters">
+            <div class="meter">
+              <div class="meter-top"><span>内存</span><b id="mMmem">—</b></div>
+              <div class="bar"><i id="bMem" class="c2"></i></div>
+            </div>
+            <div class="meter">
+              <div class="meter-top"><span>宿主磁盘</span><b id="mDisk">—</b></div>
+              <div class="bar"><i id="bDisk" class="c3"></i></div>
+            </div>
+            <div class="meter">
+              <div class="meter-top"><span>CPU 核心</span><b id="mCpu">—</b></div>
+              <div class="bar"><i id="bCpu" class="c1"></i></div>
+            </div>
+          </div>
+          <div class="kv">
+            <div><span>容器/进程</span><b id="kProc">—</b></div>
+            <div><span>重启次数</span><b id="kRestart">—</b></div>
+            <div><span>会话文件</span><b id="kSess">—</b></div>
+            <div><span>定时任务</span><b id="kCron">—</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>最近错误日志</h3><span class="hint">24 小时内样本</span></div>
+        <div class="logbox" id="logBox"><div class="empty">暂无错误</div></div>
+      </div>
+    </section>
+
+    <!-- ---------- 对话 ---------- -->
+    <section class="view" id="view-chat">
+      <div class="chat-wrap">
+        <div class="chat-flow" id="chatFlow">
+          <div class="msg sys">
+            <div class="bubble">
+              已连接 Hermes 工作台。<br>
+              消息会通过 <code>hermes run</code> 转发，回答可能较慢（复杂任务 1–3 分钟）。
+            </div>
+          </div>
+        </div>
+
+        <div class="quick" id="quick">
+          <button class="chip" data-q="检查自身状态：容器是否健康、磁盘用量、最近 24h 有没有报错日志">自检状态</button>
+          <button class="chip" data-q="列出当前已安装的技能，并说明各自用途">列出技能</button>
+          <button class="chip" data-q="总结你记忆里关于我的信息">你是怎么记住我的</button>
+          <button class="chip" data-q="检查磁盘占用最大的目录，给出清理建议">磁盘占用</button>
+        </div>
+
+        <div class="composer">
+          <label class="stream-toggle" title="流式模式：逐 token 返回 + 工具调用可视化">
+            <input type="checkbox" id="chkStream" checked> 流式
+          </label>
+          <textarea id="chatInput" rows="1" placeholder="给 Hermes 下指令…  (Enter 发送 / Shift+Enter 换行)"></textarea>
+          <button class="btn send" id="btnSend">发送</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- 配置 ---------- -->
+    <section class="view" id="view-config">
+      <div class="subtabs">
+        <button class="subtab active" data-tab="file">配置文件</button>
+        <button class="subtab" data-tab="mcp">MCP 服务器</button>
+        <button class="subtab" data-tab="provider">Provider / Key</button>
+        <button class="subtab" data-tab="chatapi">对话接口</button>
+        <button class="subtab" data-tab="system">系统动作</button>
+      </div>
+
+      <!-- 文件编辑器 -->
+      <div class="tabpane active" id="tab-file">
+        <div class="edit-wrap">
+          <div class="file-col">
+            <div class="col-head">可编辑文件</div>
+            <div class="file-list" id="fileList"><div class="empty">加载中…</div></div>
+          </div>
+          <div class="editor-col">
+            <div class="panel-head">
+              <h3 id="edTitle">未选择文件</h3>
+              <span class="hint" id="edHint">—</span>
+            </div>
+            <textarea id="fileEditor" spellcheck="false" placeholder="从左侧选一个文件…"></textarea>
+            <div class="ed-bar">
+              <button class="btn" id="btnSaveFile">保存（自动备份）</button>
+              <button class="btn ghost" id="btnDiff">查看差异</button>
+              <button class="btn ghost" id="btnBackups">备份历史</button>
+              <span class="hint" id="edWarn"></span>
+            </div>
+            <pre class="scan-out" id="edOut" hidden></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- MCP -->
+      <div class="tabpane" id="tab-mcp">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>已接入的 MCP 服务器</h3>
+            <span class="hint">
+              <button class="btn tiny" id="btnReloadMcp">热加载（不重启）</button>
+            </span>
+          </div>
+          <div class="warnbox" id="mcpWarn" hidden></div>
+          <div class="list" id="mcpList"><div class="empty">加载中…</div></div>
+
+          <div class="form-card">
+            <div class="col-head">新增 / 更新</div>
+            <div class="form-grid">
+              <label>名称<input id="mName" placeholder="例如 filesystem"></label>
+              <label>命令<input id="mCmd" placeholder="例如 npx"></label>
+              <label class="wide">参数<input id="mArgs" placeholder="-y @modelcontextprotocol/server-filesystem /data"></label>
+              <label class="wide">环境变量（JSON）<input id="mEnv" placeholder='{"API_KEY":"..."}'></label>
+            </div>
+            <div class="ed-bar">
+              <button class="btn" id="btnMcpSave">保存 MCP</button>
+              <span class="hint">顶层键必须是 <code>mcp_servers:</code>，写成 <code>mcp:</code> 会静默失效</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Provider -->
+      <div class="tabpane" id="tab-provider">
+        <div class="panel">
+          <div class="panel-head"><h3>切换模型 Provider</h3><span class="hint">改完需重启生效</span></div>
+          <div class="prov-grid" id="provGrid"></div>
+          <div class="ed-bar">
+            <label class="grow">API Key<input id="provKey" type="password" placeholder="留空 = 不修改现有密钥"></label>
+            <button class="btn" id="btnProvApply">应用选中 Provider</button>
+          </div>
+          <div class="warnbox" id="provTip"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h3>.env 变量</h3><span class="hint">密钥默认脱敏；保持原样就不要动它</span></div>
+          <div class="list" id="envList"><div class="empty">加载中…</div></div>
+        </div>
+      </div>
+
+      <!-- 对话接口 -->
+      <div class="tabpane" id="tab-chatapi">
+        <div class="panel">
+          <div class="panel-head"><h3>对话接口（Hermes 的模型 API）</h3>
+            <span class="hint">改完需重启 / /reload 生效</span></div>
+          <div class="warnbox" id="caTip"></div>
+          <div class="form-grid">
+            <label>Provider
+              <select id="caProvider"></select>
+            </label>
+            <label>默认模型
+              <input id="caModel" placeholder="如 deepseek/deepseek-chat（带前缀）">
+            </label>
+            <label class="wide">API Key
+              <input id="caKey" type="password" placeholder="留空 = 不修改现有密钥">
+            </label>
+            <label class="wide" id="caBaseWrap" hidden>Base URL（自定义 OpenAI 兼容接口时填）
+              <input id="caBase" placeholder="https://your-openai-compatible-endpoint/v1">
+            </label>
+          </div>
+          <div class="ed-bar">
+            <button class="btn" id="btnChatApiSave">保存对话接口</button>
+            <span class="hint" id="caCurrent">—</span>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>可选 Provider 预设</h3>
+            <span class="hint">点一下把模型名填好，再补 Key</span></div>
+          <div class="prov-grid" id="caPresets"></div>
+        </div>
+      </div>
+
+      <!-- 系统动作 -->
+      <div class="tabpane" id="tab-system">
+        <div class="panel">
+          <div class="panel-head"><h3>危险动作</h3><span class="hint">全部记入审计，全部需要确认</span></div>
+          <div class="scan-bar">
+            <button class="btn" id="btnRestart">重启 Hermes</button>
+            <button class="btn ghost" id="btnUpgrade">拉取并升级</button>
+            <label class="grow">危险操作令牌<input id="dangerToken" type="password" placeholder="若服务端设置了 DASH_DANGER_TOKEN 则必填"></label>
+          </div>
+          <pre class="scan-out" id="actionOut">输出会显示在这里。</pre>
+          <div class="warnbox">
+            重启会中断进行中的任务；升级会重建容器。<br>
+            <b>两者都会先写审计，且 config.yaml / .env 的每次修改都已自动备份，改崩了可在「配置文件 → 备份历史」一键回滚。</b>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- 成本 ---------- -->
+    <section class="view" id="view-cost">
+      <div class="subtabs">
+        <button class="subtab active" data-tab="usage">用量与预算</button>
+        <button class="subtab" data-tab="price">价格表</button>
+        <button class="subtab" data-tab="alert">告警渠道</button>
+        <button class="subtab" data-tab="alertlog">告警记录</button>
+      </div>
+
+      <div class="tabpane active" id="tab-usage">
+        <div class="cost-cards" id="costCards"></div>
+        <div class="panel">
+          <div class="panel-head"><h3>预算</h3><span class="hint" id="budgetHint">—</span></div>
+          <div class="budget-line">
+            <div class="bar"><i id="bBudget" class="c1"></i></div>
+            <span class="budget-tag ok" id="budgetTag">—</span>
+          </div>
+          <div class="warnbox" id="costNote" hidden></div>
+        </div>
+        <div class="grid-2">
+          <div class="panel">
+            <div class="panel-head"><h3>按模型</h3><span class="hint" id="modelHint">—</span></div>
+            <table class="tbl" id="modelTbl"></table>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h3>最近 30 天</h3><span class="hint">每日花费</span></div>
+            <div class="spark-wrap"><div class="spark" id="daySpark"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabpane" id="tab-price">
+        <div class="panel">
+          <div class="panel-head"><h3>价格表</h3><span class="hint">元 / 每百万 token</span></div>
+          <div class="warnbox">
+            下面是<b>预估值</b>，不同厂商、不同时间价格都不同。
+            <b>请按你的真实账单校准</b> —— 否则这里的数字只是好看，没有意义。
+          </div>
+          <textarea id="pricingEditor" spellcheck="false" style="width:100%;min-height:330px;margin-top:12px"></textarea>
+          <div class="ed-bar">
+            <button class="btn" id="btnPricingSave">保存价格表</button>
+            <button class="btn ghost" id="btnPricingReset">恢复默认</button>
+            <span class="hint" id="pricingHint">JSON 格式：{"模型名":{"in":输入价,"out":输出价}}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabpane" id="tab-alert">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>推送渠道</h3>
+            <span class="hint">
+              <button class="btn tiny" id="btnNotifyTest">发一条测试</button>
+            </span>
+          </div>
+          <div class="warnbox">
+            凭证在页面上<b>脱敏显示</b>，配置文件权限设为 600。
+            只想收告警不想改配置？把挂载保持 <code>:ro</code>、<code>DASH_READ_ONLY=1</code>，
+            告警配置就需要手动放一次。
+          </div>
+          <div id="chanList" style="margin-top:12px"></div>
+          <div class="form-card">
+            <div class="col-head" id="chFormTitle">新增渠道</div>
+            <div class="form-grid">
+              <label>类型
+                <select id="chType"></select>
+              </label>
+              <label>名称（便于区分多个同名渠道）
+                <input id="chName" placeholder="例如 我的钉钉 / 机房告警">
+              </label>
+            </div>
+            <div class="form-grid" id="chDynamic"></div>
+            <div class="ed-bar">
+              <button class="btn" id="btnChanAdd">添加渠道</button>
+              <button class="btn ghost" id="btnChanCancel" hidden>取消编辑</button>
+              <span class="hint" id="chHint"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h3>告警规则</h3><span class="hint">同类告警默认 6 小时内只发一次</span></div>
+          <div class="rules" id="ruleBox"></div>
+          <div class="ed-bar">
+            <label>冷却（小时）<input id="cooldown" type="number" min="0" max="72" style="width:110px"></label>
+            <button class="btn" id="btnNotifySave">保存告警配置</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabpane" id="tab-alertlog">
+        <div class="panel">
+          <div class="panel-head"><h3>告警发送记录</h3><span class="hint">发没发出去，这里能查</span></div>
+          <div id="alertLog"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- 技能 ---------- -->
+    <section class="view" id="view-skills">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>技能库</h3>
+          <span class="hint" id="skillHint">—</span>
+        </div>
+        <div class="ed-bar">
+          <label class="grow">从 Skills Hub 安装<input id="skillInstallName" placeholder="例如 docker-management"></label>
+          <button class="btn" id="btnSkillInstall">安装</button>
+        </div>
+        <div class="list" id="skillList"><div class="empty">加载中…</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>已归档（禁用）</h3><span class="hint">移到 .archive，不真删</span></div>
+        <div class="list" id="archivedList"><div class="empty">无</div></div>
+      </div>
+    </section>
+
+    <!-- ---------- 记忆 ---------- -->
+    <section class="view" id="view-memory">
+      <div class="panel">
+        <div class="panel-head"><h3>记忆文件</h3><span class="hint" id="memHint">—</span></div>
+        <div class="list" id="memList"><div class="empty">加载中…</div></div>
+      </div>
+    </section>
+
+    <!-- ---------- 任务 ---------- -->
+    <section class="view" id="view-task">
+      <div class="panel">
+        <div class="panel-head"><h3>定时任务</h3><span class="hint">禁用 = 改名加 .disabled，不删除</span></div>
+        <div class="list" id="cronList"><div class="empty">加载中…</div></div>
+      </div>
+    </section>
+
+    <!-- ---------- 体检 ---------- -->
+    <section class="view" id="view-scan">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>一键巡检</h3>
+          <span class="hint" id="scanHint">直接复用你自己的巡检脚本</span>
+        </div>
+        <div class="scan-bar">
+          <button class="btn" id="btnHealth">运行 health-check.sh</button>
+          <button class="btn ghost" id="btnSec">运行 security-check.sh</button>
+          <span class="scan-tip">脚本缺失时不会静默失败，会明确告诉你路径</span>
+        </div>
+        <pre class="scan-out" id="scanOut">点上面的按钮开始。
+
+· health-check.sh  —— 运行时体检：进程存活、配额、24h 错误、记忆膨胀、cron、资源
+                      健康时默认"零输出"（专为 cron 设计，避免刷屏邮件）
+· security-check.sh —— 安全基线：权限 600、密钥泄漏、记忆投毒特征、技能外联、
+                      cron 后门、容器逃逸面（docker.sock）、备份是否存在</pre>
+      </div>
+    </section>
+
+    <!-- ---------- 记录 ---------- -->
+    <section class="view" id="view-audit">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>变更审计</h3>
+          <span class="hint">谁在什么时候动了什么 —— 网页改配置的底气来源</span>
+        </div>
+        <div class="list" id="auditList"><div class="empty">加载中…</div></div>
+      </div>
+    </section>
+
+    <!-- ---------- 功能（Hermes 命令台 + 配置开关） ---------- -->
+    <section class="view" id="view-hermes">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Hermes 命令台</h3>
+          <span class="hint">把 Hermes CLI 功能接口搬进网页 · 白名单内可直跑</span>
+        </div>
+        <div class="cmd-grid" id="cmdGrid"></div>
+        <div class="form-grid" style="margin-top:12px">
+          <label class="wide">手动输入（hermes 后接参数，如 <code>session prune --older-than 30d</code>）
+            <input id="hermesArgs" placeholder="session list">
+          </label>
+          <div class="ed-bar">
+            <button class="btn" id="btnHermesRun">执行</button>
+            <span class="hint" id="hermesHint"></span>
+          </div>
+        </div>
+        <pre class="term" id="hermesOut">（输出会显示在这里）</pre>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>配置开关</h3>
+          <span class="hint">config.yaml 常用旋钮 · 改完需重启 Hermes 生效</span></div>
+        <div id="cfgBox" class="cfg-box"></div>
+        <div class="panel-head" style="margin-top:16px"><h3>网关白名单</h3>
+          <span class="hint">远程入口必须的授权名单（如 TELEGRAM_ALLOWED_USERS）</span></div>
+        <div class="form-grid">
+          <label class="wide">TELEGRAM_ALLOWED_USERS（你的数字 ID，逗号分隔）
+            <input id="tgUsers" placeholder="例如 123456789, 987654321">
+          </label>
+          <div class="ed-bar">
+            <button class="btn" id="btnTgSave">保存白名单</button>
+            <span class="hint" id="tgHint"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- 系统（版本/升级/体检/密码） ---------- -->
+    <section class="view" id="view-system">
+      <div class="cards" id="sysCards">
+        <div class="card"><div class="card-label">当前版本</div>
+          <div class="card-value" id="sysVer">—</div>
+          <div class="card-sub" id="sysVerSub">—</div></div>
+        <div class="card"><div class="card-label">上游版本</div>
+          <div class="card-value" id="sysUp">—</div>
+          <div class="card-sub" id="sysUpSub">未配置检查源</div></div>
+        <div class="card"><div class="card-label">鉴权</div>
+          <div class="card-value" id="sysAuth">启用</div>
+          <div class="card-sub" id="sysAuthSub">单密码登录</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head"><h3>升级与更新</h3>
+            <span class="hint">可持续升级，工作台自身 + Hermes</span></div>
+          <div class="ed-bar">
+            <button class="btn" id="btnDashUpdate">升级工作台（git pull）</button>
+            <button class="btn" id="btnHermesUpdate">升级 Hermes</button>
+          </div>
+          <div class="ed-bar" style="margin-top:8px">
+            <span class="hint" id="updHint">工作台自更新需以 git 仓库方式部署；容器内部署请用 compose pull</span>
+          </div>
+          <pre class="term" id="updOut">（升级输出会显示在这里）</pre>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h3>自检 / 体检</h3>
+            <span class="hint">hermes doctor + 安全基线</span></div>
+          <div class="ed-bar">
+            <button class="btn" id="btnDoctor">运行 hermes doctor</button>
+            <button class="btn" id="btnScanSec">安全体检</button>
+          </div>
+          <pre class="term" id="docOut">（自检输出会显示在这里）</pre>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>登录与账户</h3>
+          <span class="hint">安全第一：单密码，无用户名</span></div>
+        <div class="ed-bar">
+          <button class="btn" id="btnChangePw">修改登录密码</button>
+          <button class="btn ghost" id="btnLogout2">退出登录</button>
+          <span class="hint" id="pwHint"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 仪表盘（官方 iframe 嵌入） ============ -->
+    <section class="view" id="view-dashboard">
+      <div class="panel" style="padding:0;overflow:hidden;position:relative">
+        <iframe id="dashFrame" src="about:blank"
+                style="width:100%;height:calc(100vh - 110px);border:0;display:block"
+                loading="lazy"></iframe>
+        <div id="dashFallback" hidden style="padding:32px;text-align:center">
+          <p style="font-size:15px;margin-bottom:8px">Hermes 官方仪表盘未启动</p>
+          <p class="hint">在 Hermes 环境执行 <code>hermes dashboard</code> 启动官方后端，<br>
+          或在工作台的环境变量中设置 <code>HERMES_API</code> 指向官方仪表盘地址，<br>
+          然后刷新此页面。</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ============ 登录层（安全优先） ============ -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="brand" style="justify-content:center;margin-bottom:18px">
+      <div class="brand-mark">H</div>
+      <div class="brand-text"><div class="brand-name">Hermes</div>
+        <div class="brand-sub">工作台 · 登录</div></div>
+    </div>
+    <label class="login-label">访问密码
+      <input id="loginPw" type="password" placeholder="部署后从 DASHBOARD_PASSWORD.txt 读取" autocomplete="current-password">
+    </label>
+    <button class="btn login-btn" id="btnLogin">登 录</button>
+    <div class="login-err" id="loginErr"></div>
+    <div class="login-tip">仅一个密码，无用户名。首次登录请按提示修改初始密码。</div>
+  </div>
+</div>
+
+<!-- ============ 修改密码弹窗 ============ -->
+<div class="modal-mask" id="pwModal" hidden>
+  <div class="modal">
+    <h3 id="pwModalTitle">修改登录密码</h3>
+    <label class="login-label">原密码
+      <input id="pwOld" type="password" autocomplete="current-password"></label>
+    <label class="login-label">新密码（至少 8 位）
+      <input id="pwNew" type="password" autocomplete="new-password"></label>
+    <label class="login-label">确认新密码
+      <input id="pwNew2" type="password" autocomplete="new-password"></label>
+    <div class="ed-bar">
+      <button class="btn" id="btnPwSave">保存</button>
+      <button class="btn ghost" id="btnPwCancel">取消</button>
+      <span class="login-err" id="pwErr"></span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

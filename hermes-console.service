@@ -1,0 +1,22 @@
+[Unit]
+Description=Hermes 工作台（监控 + 网页控制台）
+After=network.target docker.service
+# 依赖 Hermes 容器先起；起不来也不阻塞本服务（只想监控时 Hermes 没起也行）
+Requires=docker.service
+
+[Service]
+Type=simple
+# 用和 Hermes 同名的用户跑，文件归属一致、10G 配额才约束得住
+User=hermes
+WorkingDirectory=/volume1/docker/hermes-console
+EnvironmentFile=/volume1/docker/hermes-console/.env
+ExecStartPre=/usr/bin/python3 -c "import flask, ruamel.yaml"
+ExecStart=/usr/bin/python3 /volume1/docker/hermes-console/app.py
+Restart=always
+RestartSec=10
+# 崩了自动重启，关键
+StandardOutput=append:/volume1/docker/hermes-console/dash.log
+StandardError=append:/volume1/docker/hermes-console/dash.log
+
+[Install]
+WantedBy=multi-user.target

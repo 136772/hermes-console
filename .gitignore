@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 环境变量（绝不提交！）
+.env
+*.env.local
+
+# 工作台运行时数据
+.dashboard/
+dashboard.log
+*.pid
+*.pid.lock
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node（如果以后加前端构建）
+node_modules/
+npm-debug.log*
