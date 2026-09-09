@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - **工作区文件树浏览器**（新导航「工作区」）：浏览整个 Hermes 数据目录的任意子目录，读 / 写任意文本文件。复用既有自动备份、语法校验、目录穿越防护；与「配置文件」白名单编辑器互补——前者只改核心配置，后者可看全貌。
 - **MCP 一键连通测试**：MCP 管理页每个服务器新增「测试连接」按钮，调用 `hermes mcp test <name>`（复用 docker exec 机制），输出原样展示。
-- 新增 API：`/api/workspace`（列目录）、`/api/workspace/file`（GET/POST 读写）、`/api/mcp/test`（POST）。API 端点 40 → 44。
+- 新增 API：`/api/workspace`（列目录）、`/api/workspace/file`（GET/POST 读写）、`/api/mcp/test`（POST）。API 端点 40 → **43**；视图 12 → **13**。
+- 新增截图：工作区文件树、MCP 管理页、测试连接输出，并更新 4 张旧视图截图。
 
 ### Changed
 - 中文 README 的 `/proxy` 与 API 章节同步 WebSocket 经前置 Caddy 透传的说明。
