@@ -5,6 +5,10 @@
 # ============================================================
 set -euo pipefail
 
+# 避免部分精简系统（如飞牛 NAS / Debian minimal）报 setlocale 警告
+export LC_ALL=C.UTF-8 2>/dev/null || export LC_ALL=C
+export LANG=C.UTF-8 2>/dev/null || export LANG=C
+
 INSTALL_VERSION="1.3.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -96,6 +100,16 @@ detect_os() {
   fi
 }
 
+detect_fnos_data_dir() {
+  # 飞牛 NAS 习惯把应用数据放在 /volX/xxx/docker/<app>/ 下
+  # 如果脚本已经在这种目录里运行，推荐把数据目录设为当前目录下的 data/
+  if [[ "$SCRIPT_DIR" =~ ^/vol[0-9]+/.*/docker/ ]]; then
+    echo "$SCRIPT_DIR/data"
+  else
+    echo ""
+  fi
+}
+
 detect_arch() {
   local a
   a="$(uname -m)"
@@ -182,51 +196,84 @@ parse_args() {
   done
 }
 
+# 飞牛 NAS 路径自适应：脚本若在 /volX/.../docker/<app>/ 下运行，默认数据目录改为当前目录/data
+# 放在 parse_args 之后，确保 detect_fnos_data_dir 已定义、--hermes-dir 已解析
+FNOS_DATA_DIR="$(detect_fnos_data_dir)"
+if [ -n "$FNOS_DATA_DIR" ]; then
+  HERMES_DIR="$FNOS_DATA_DIR"
+fi
+
 # ============================================================
 # 4. 交互式问答
 # ============================================================
 ask() {
-  # ask "提示语" "默认值" → 输出用户输入或默认值
-  local prompt="$1" default="$2"
+  # ask "步骤标题" "提示语" "默认值" → 输出用户输入或默认值
+  local step="$1" prompt="$2" default="$3"
   local input
   if $ASSUME_YES; then
     echo "$default"
     return
   fi
-  read -rp "$(printf "\033[36m%s\033[0m [%s]: " "$prompt" "$default")" input || true
+  # 交互提示立即输出到 stderr，避免 stdout 缓冲导致问题堆在一起
+  printf "\n\033[1;36m%s\033[0m\n" "$step" >&2
+  printf "  \033[36m%s\033[0m [%s]: " "$prompt" "$default" >&2
+  read -r input || true
   echo "${input:-$default}"
 }
 
 ask_menu() {
-  # ask_menu "提示语" "选项1" "选项2" "选项3" → 输出选中项的索引(1-3)
-  local prompt="$1"; shift
+  # ask_menu "步骤标题" "提示语" "选项1" "选项2" ... → 输出选中项的索引(1-N)
+  local step="$1" prompt="$2"; shift 2
   local options=("$@")
   local i=1
-  echo ""
-  for opt in "${options[@]}"; do
-    echo "  $i) $opt"
-    i=$((i + 1))
-  done
   local choice
   if $ASSUME_YES; then
-    choice=1
-  else
-    read -rp "$(printf "\033[36m%s\033[0m [1]: " "$prompt")" choice || true
-    choice="${choice:-1}"
+    echo 1
+    return
   fi
+  # 交互提示立即输出到 stderr
+  printf "\n\033[1;36m%s\033[0m\n" "$step" >&2
+  printf "  \033[36m%s\033[0m\n" "$prompt" >&2
+  for opt in "${options[@]}"; do
+    printf "    %d) %s\n" "$i" "$opt" >&2
+    i=$((i + 1))
+  done
+  printf "  \033[36m请选择\033[0m [1-%d, 默认 %d]: " "$((i-1))" 1 >&2
+  read -r choice || true
+  choice="${choice:-1}"
   echo "$choice"
 }
 
 interactive_setup() {
+  local total=10
+  local step=1
+  local pct
+
+  # --yes 模式下，若 action 和 mode 都已指定，直接跳过交互提示
+  if $ASSUME_YES && [ -n "$ACTION" ] && [ -n "$MODE" ]; then
+    return
+  fi
+
+  # 给出一个总览，让用户知道大概会问几个问题
+  printf "\n\033[1;33m═══ 交互式配置开始（共 %d 步，直接回车使用默认值）═══\033[0m\n" "$total"
+  if [ -n "$FNOS_DATA_DIR" ]; then
+    info "检测到飞牛 NAS 目录结构，数据目录默认值已设为: $HERMES_DIR"
+  fi
+
   # 1. 动作
   if [ -z "$ACTION" ]; then
     local c
-    c=$(ask_menu "要做什么？" "只装工作台" "Hermes + 工作台一起装" "只更新工作台")
+    pct=$(printf "[%d/%d]" "$step" "$total")
+    c=$(ask_menu "$pct 选择本次操作" "要执行什么？" \
+      "只装工作台（已有 Hermes）" \
+      "Hermes + 工作台一起装" \
+      "只更新工作台")
     case "$c" in
       1) ACTION="install" ;;
       2) ACTION="hermes+dash" ;;
       3) ACTION="update" ;;
     esac
+    step=$((step+1))
   fi
 
   # 更新模式不需要问部署方式
@@ -245,47 +292,78 @@ interactive_setup() {
   # 2. 部署方式
   if [ -z "$MODE" ]; then
     local c
-    c=$(ask_menu "部署方式？" "Docker Compose（推荐）" "宿主机直跑" "systemd 服务")
+    pct=$(printf "[%d/%d]" "$step" "$total")
+    c=$(ask_menu "$pct 选择部署方式" "如何把控制台跑起来？" \
+      "Docker Compose（推荐，隔离好、易维护）" \
+      "宿主机直跑（当前 shell 直接启动 python）" \
+      "systemd 服务（开机自启）")
     case "$c" in
       1) MODE="docker" ;;
       2) MODE="host" ;;
       3) MODE="systemd" ;;
     esac
+    step=$((step+1))
   fi
 
   # 3. 数据目录
-  HERMES_DIR=$(ask "Hermes 数据目录" "$HERMES_DIR")
+  pct=$(printf "[%d/%d]" "$step" "$total"); step=$((step+1))
+  HERMES_DIR=$(ask "$pct 数据目录" \
+    "控制台持久化数据保存到哪个目录？" "$HERMES_DIR")
 
   # 4. 端口
-  PORT=$(ask "工作台端口" "$PORT")
+  pct=$(printf "[%d/%d]" "$step" "$total"); step=$((step+1))
+  PORT=$(ask "$pct 监听端口" \
+    "浏览器通过哪个端口访问控制台？" "$PORT")
 
   # 5. UID
-  HERMES_UID=$(ask "运行用户 UID" "$HERMES_UID")
+  pct=$(printf "[%d/%d]" "$step" "$total"); step=$((step+1))
+  HERMES_UID=$(ask "$pct 运行 UID" \
+    "容器内/进程以哪个 Linux UID 运行？（建议保持默认 1001）" "$HERMES_UID")
 
   # 6. 容器名（docker 模式才问）
   if [ "$MODE" = "docker" ]; then
-    HERMES_CONTAINER=$(ask "Hermes 容器名" "$HERMES_CONTAINER")
+    pct=$(printf "[%d/%d]" "$step" "$total"); step=$((step+1))
+    HERMES_CONTAINER=$(ask "$pct Hermes 容器名" \
+      "本机 Hermes Agent 的 Docker 容器叫什么名字？" "$HERMES_CONTAINER")
+  else
+    # 非 docker 模式此步无关，跳过但占住步骤号，保证进度条一致
+    if ! $ASSUME_YES; then
+      printf "\n\033[1;36m[%d/%d] Hermes 容器名\033[0m\n  \033[90m跳过（仅在 Docker 模式下需要）\033[0m\n" "$step" "$total" >&2
+    fi
+    step=$((step+1))
   fi
 
   # 7. 配额
-  QUOTA_MB=$(ask "配额 MB" "$QUOTA_MB")
+  pct=$(printf "[%d/%d]" "$step" "$total"); step=$((step+1))
+  QUOTA_MB=$(ask "$pct 磁盘配额" \
+    "单用户最大可用空间（单位 MB，默认 10GB）" "$QUOTA_MB")
 
   # 8. 危险令牌
   if [ -z "$DANGER_TOKEN" ]; then
     local c
-    c=$(ask_menu "危险动作令牌" "自动生成（推荐）" "手动输入")
+    pct=$(printf "[%d/%d]" "$step" "$total")
+    c=$(ask_menu "$pct 危险动作令牌" \
+      "重启/清理/升级等危险操作需要的令牌如何生成？" \
+      "自动生成 32 位随机令牌（推荐）" \
+      "手动输入固定令牌")
     if [ "$c" = "1" ]; then
       DANGER_TOKEN="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)"
     else
-      DANGER_TOKEN=$(ask "输入令牌" "")
+      DANGER_TOKEN=$(ask "[$step/$total] 输入令牌" "请输入自定义令牌" "")
     fi
   fi
+  step=$((step+1))
 
   # 9. 预算
-  BUDGET_DAILY=$(ask "每日预算（元，0=不限）" "$BUDGET_DAILY")
-  BUDGET_MONTHLY=$(ask "每月预算（元，0=不限）" "$BUDGET_MONTHLY")
+  pct=$(printf "[%d/%d]" "$step" "$total"); step=$((step+1))
+  BUDGET_DAILY=$(ask "$pct 每日预算" \
+    "每日 API 花费上限（元，0=不限制）" "$BUDGET_DAILY")
+  pct=$(printf "[%d/%d]" "$step" "$total"); step=$((step+1))
+  BUDGET_MONTHLY=$(ask "$pct 每月预算" \
+    "每月 API 花费上限（元，0=不限制）" "$BUDGET_MONTHLY")
 
-  # 10. 国内源
+  # 10. 国内源（自动检测，不提问）
+  printf "\n" >&2
   if [ -z "$CN_MIRROR" ]; then
     local detected
     detected=$(detect_cn)
@@ -297,6 +375,8 @@ interactive_setup() {
       CN_MIRROR="no"
     fi
   fi
+
+  printf "\n\033[1;32m═══ 配置完成，开始执行 %s / %s 部署 ═══\033[0m\n" "$ACTION" "$MODE"
 }
 
 # ============================================================
