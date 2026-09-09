@@ -21,6 +21,7 @@ import difflib
 import threading
 import subprocess
 import urllib.request
+import uuid
 from datetime import datetime
 
 try:
@@ -1104,3 +1105,247 @@ def doctor(base, mode=None, container=None, timeout=120):
     rc, out, err = hermes_run(["doctor"], base=base, mode=mode,
                               container=container, timeout=timeout)
     return {"ok": rc == 0, "rc": rc, "output": (out or err)[:4000]}
+
+
+# ============================================================
+# 13. 多会话聊天（消息历史持久化）
+# ============================================================
+
+_SESS_RE = re.compile(r"^[A-Za-z0-9_\-]{1,40}$")
+
+
+def _sessions_dir(base):
+    p = os.path.join(base, "sessions")
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
+def _session_path(base, sid):
+    if not _SESS_RE.match(sid or ""):
+        raise CtlError("非法会话 ID")
+    return os.path.join(_sessions_dir(base), sid + ".json")
+
+
+def _now():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _save_session(base, data):
+    with open(_session_path(base, data["id"]), "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def list_sessions(base):
+    d = _sessions_dir(base)
+    items = []
+    try:
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".json"):
+                continue
+            try:
+                data = json.loads(open(os.path.join(d, fn),
+                                       encoding="utf-8", errors="ignore").read())
+            except Exception:                                        # noqa
+                continue
+            items.append({
+                "id": data.get("id", fn[:-5]),
+                "name": data.get("name", fn[:-5]),
+                "created_at": data.get("created_at", ""),
+                "updated_at": data.get("updated_at", ""),
+                "count": len(data.get("messages", [])),
+                "model": data.get("model", ""),
+            })
+    except FileNotFoundError:
+        pass
+    items.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+    return {"sessions": items}
+
+
+def create_session(base, name="", model=""):
+    sid = uuid.uuid4().hex[:12]
+    now = _now()
+    data = {"id": sid, "name": (name or "").strip() or ("会话 " + sid[:6]),
+            "created_at": now, "updated_at": now,
+            "model": (model or "").strip(), "messages": []}
+    _save_session(base, data)
+    return data
+
+
+def get_session(base, sid):
+    p = _session_path(base, sid)
+    if not os.path.isfile(p):
+        raise CtlError("会话不存在")
+    return json.loads(open(p, encoding="utf-8", errors="ignore").read())
+
+
+def rename_session(base, sid, name, actor=""):
+    data = get_session(base, sid)
+    data["name"] = (name or "").strip() or data["name"]
+    data["updated_at"] = _now()
+    _save_session(base, data)
+    audit(base, "session.rename", f"{sid} -> {data['name']}", actor)
+    return data
+
+
+def delete_session(base, sid, actor=""):
+    p = _session_path(base, sid)
+    if not os.path.isfile(p):
+        raise CtlError("会话不存在")
+    os.remove(p)
+    audit(base, "session.delete", sid, actor)
+    return True
+
+
+def append_message(base, sid, role, text, ms=None):
+    """追加一条消息并自动更新 updated_at（截断到最近 200 条）。"""
+    data = get_session(base, sid)
+    data.setdefault("messages", []).append({
+        "role": role, "text": text, "ms": ms,
+        "ts": _now(),
+    })
+    if len(data["messages"]) > 200:
+        data["messages"] = data["messages"][-200:]
+    data["updated_at"] = _now()
+    _save_session(base, data)
+    return data
+
+
+# ============================================================
+# 14. 多智能体编排（agents.yaml：智能体定义 + 团队）
+# ============================================================
+
+_AGENT_RE = re.compile(r"^[A-Za-z0-9_\-]{1,40}$")
+
+
+def _agents_path(base):
+    return os.path.join(base, "agents.yaml")
+
+
+def load_agents_cfg(base):
+    p = _agents_path(base)
+    if not os.path.isfile(p):
+        return {"agents": [], "teams": []}, p
+    if not HAS_YAML:
+        raise CtlError("缺少 ruamel.yaml，无法读写 agents.yaml（pip install ruamel.yaml）")
+    with open(p, encoding="utf-8") as f:
+        cfg = _yaml.load(f) or {}
+    return cfg, p
+
+
+def list_agents(base):
+    cfg, _ = load_agents_cfg(base)
+    return {"exists": os.path.isfile(_agents_path(base)),
+            "agents": cfg.get("agents") or [],
+            "teams": cfg.get("teams") or []}
+
+
+def _get_agent(cfg, aid):
+    for a in (cfg.get("agents") or []):
+        if a.get("id") == aid:
+            return a
+    return None
+
+
+def save_agent(base, agent, actor=""):
+    if not _AGENT_RE.match(agent.get("id", "") or ""):
+        raise CtlError("智能体 ID 只能含字母数字下划线短横线（1-40 字符）")
+    cfg, path = load_agents_cfg(base)
+    agents = cfg.setdefault("agents", [])
+    existing = _get_agent(cfg, agent["id"])
+    node = {
+        "id": agent["id"],
+        "name": (agent.get("name") or agent["id"]).strip(),
+        "role": (agent.get("role") or "").strip(),
+        "model": (agent.get("model") or "").strip(),
+        "persona": (agent.get("persona") or "").strip(),
+    }
+    if existing:
+        existing.update(node)
+    else:
+        agents.append(node)
+    _dump_agents(base, cfg, actor, f"agent.save {agent['id']}")
+    return node
+
+
+def delete_agent(base, aid, actor=""):
+    if not _AGENT_RE.match(aid or ""):
+        raise CtlError("非法智能体 ID")
+    cfg, _ = load_agents_cfg(base)
+    before = len(cfg.get("agents") or [])
+    cfg["agents"] = [a for a in cfg.get("agents") or [] if a.get("id") != aid]
+    # 同步从团队里移除
+    for t in cfg.get("teams") or []:
+        t["agents"] = [x for x in (t.get("agents") or []) if x != aid]
+    _dump_agents(base, cfg, actor, f"agent.delete {aid}")
+    return {"removed": before != len(cfg["agents"])}
+
+
+def save_team(base, team, actor=""):
+    if not _AGENT_RE.match(team.get("id", "") or ""):
+        raise CtlError("团队 ID 只能含字母数字下划线短横线（1-40 字符）")
+    mode = (team.get("mode") or "pipeline").strip().lower()
+    if mode not in ("pipeline", "sequential", "parallel"):
+        raise CtlError("编排模式只能是 pipeline / sequential / parallel")
+    cfg, _ = load_agents_cfg(base)
+    teams = cfg.setdefault("teams", [])
+    node = {
+        "id": team["id"],
+        "name": (team.get("name") or team["id"]).strip(),
+        "mode": mode,
+        "agents": [x for x in (team.get("agents") or []) if _AGENT_RE.match(str(x))],
+    }
+    existing = None
+    for t in teams:
+        if t.get("id") == team["id"]:
+            existing = t
+            break
+    if existing:
+        existing.update(node)
+    else:
+        teams.append(node)
+    _dump_agents(base, cfg, actor, f"team.save {team['id']}")
+    return node
+
+
+def delete_team(base, tid, actor=""):
+    if not _AGENT_RE.match(tid or ""):
+        raise CtlError("非法团队 ID")
+    cfg, _ = load_agents_cfg(base)
+    before = len(cfg.get("teams") or [])
+    cfg["teams"] = [t for t in cfg.get("teams") or [] if t.get("id") != tid]
+    _dump_agents(base, cfg, actor, f"team.delete {tid}")
+    return {"removed": before != len(cfg.get("teams", []))}
+
+
+def _dump_agents(base, cfg, actor, action):
+    if not HAS_YAML:
+        raise CtlError("缺少 ruamel.yaml（pip install ruamel.yaml）")
+    p = _agents_path(base)
+    if os.path.isfile(p):
+        backup(base, os.path.relpath(p, base) if False else "agents.yaml")
+    buf = io.StringIO()
+    _yaml.dump(cfg, buf)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(buf.getvalue())
+    audit(base, action, "", actor)
+
+
+def build_agent_prompt(agent, task, prev=""):
+    """构造喂给 `hermes run` 的提示词：聚焦身份 + 任务（+ 上游产出）。"""
+    role = (agent.get("role") or "").strip()
+    persona = (agent.get("persona") or "").strip()
+    head = ""
+    if role or persona:
+        head = "你现在的身份是：%s。\n%s\n\n" % (role, persona)
+    if prev:
+        return (head + "这是多智能体协作任务，上一位智能体的产出如下：\n"
+                "----\n%s\n----\n请基于以上产出，完成你的部分：%s" % (prev, task))
+    return head + "任务：%s" % task
+
+
+def agent_run_cmd(prompt, mode=None, container=None):
+    """构造 `hermes run --json --stream` 命令（与流式对话一致）。"""
+    cmd = ["hermes", "run", "--json", "--stream", prompt]
+    if mode == "docker":
+        cmd = ["docker", "exec", container or "hermes"] + cmd
+    return cmd

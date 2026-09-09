@@ -52,11 +52,12 @@ const post = (url, body) => api(url, {
 /* ---------------- 视图切换 ---------------- */
 const TITLES = { overview: '总览', chat: '对话', config: '配置', cost: '成本', skills: '技能',
                  memory: '记忆', task: '任务', scan: '体检', audit: '变更记录',
-                 hermes: '功能', dashboard: '仪表盘', system: '系统', workspace: '工作区' };
-const LOADERS = { skills: loadSkills, memory: loadMemory, task: loadCron,
+                 hermes: '功能', dashboard: '仪表盘', system: '系统', workspace: '工作区',
+                 agents: '智能体' };
+const LOADERS = { chat: loadChatView, skills: loadSkills, memory: loadMemory, task: loadCron,
                   audit: loadAudit, config: loadFiles, cost: loadCost,
                   hermes: loadHermes, dashboard: loadDashboard, system: loadSystem,
-                  workspace: loadWorkspace };
+                  workspace: loadWorkspace, agents: loadAgents };
 
 $$('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -239,6 +240,7 @@ function drawChart(hist) {
 
 /* ---------------- 配置文件 ---------------- */
 async function loadFiles() {
+  refreshEditors();
   const d = await api('/api/files');
   const box = $('#fileList');
   if (!d.ok || !d.items || !d.items.length) {
@@ -265,14 +267,15 @@ async function openFile(path, el) {
   state.dirty = false;
   $('#edTitle').textContent = d.path;
   $('#edHint').textContent = `修改于 ${fmtDT(d.mtime)} · ${d.backups.length} 份历史备份`;
-  $('#fileEditor').value = d.content;
+  editorSet('fileEditor', d.content);
+  editorMode('fileEditor', d.path);
   $('#edOut').hidden = true;
   updateDirty();
 }
 
 function updateDirty() {
   const d = state.file;
-  const dirty = d && $('#fileEditor').value !== d.content;
+  const dirty = d && editorVal('fileEditor') !== d.content;
   state.dirty = dirty;
   $('#btnSaveFile').textContent = dirty ? '保存（有未保存改动）' : '保存（自动备份）';
 }
@@ -283,10 +286,10 @@ $('#btnSaveFile').addEventListener('click', async () => {
   if (!state.file) return toast('先选一个文件', true);
   if (!state.dirty) return toast('没有改动');
   const d = await post('/api/file', {
-    path: state.file.path, content: $('#fileEditor').value
+    path: state.file.path, content: editorVal('fileEditor')
   });
   if (!d.ok) { toast(d.error, true); $('#edOut').hidden = false; $('#edOut').textContent = d.error; return; }
-  state.file.content = $('#fileEditor').value;
+  state.file.content = editorVal('fileEditor');
   updateDirty();
   if (d.changed) {
     toast('已保存并备份：' + d.backup);
@@ -298,7 +301,7 @@ $('#btnSaveFile').addEventListener('click', async () => {
 
 $('#btnDiff').addEventListener('click', () => {
   if (!state.file) return;
-  const cur = $('#fileEditor').value.split('\n');
+  const cur = editorVal('fileEditor').split('\n');
   const old = state.file.content.split('\n');
   const out = [];
   const max = Math.max(cur.length, old.length);
@@ -394,8 +397,98 @@ $('#btnReloadMcp').addEventListener('click', async () => {
   toast(r.ok ? '热加载完成' : (r.output || r.error || '失败'), !r.ok);
 });
 
+/* ---------------- CodeMirror 彩色编辑器（VSCode 风格高亮） ---------------- */
+const CM_MODES = {
+  py: 'python', pyw: 'python',
+  yaml: 'yaml', yml: 'yaml',
+  js: 'javascript', mjs: 'javascript', cjs: 'javascript', ts: 'javascript', jsx: 'javascript',
+  json: { name: 'javascript', json: true },
+  md: 'markdown', markdown: 'markdown',
+  sh: 'shell', bash: 'shell', zsh: 'shell',
+  toml: 'toml', go: 'go', rs: 'rust', sql: 'sql',
+  html: 'htmlmixed', htm: 'htmlmixed', xml: 'htmlmixed', css: 'css',
+  c: 'clike', h: 'clike', cpp: 'clike', hpp: 'clike', java: 'clike', kt: 'clike',
+};
+const CM_NAMED = { Dockerfile: 'dockerfile', dockerfile: 'dockerfile', Makefile: 'shell' };
+
+function cmModeFor(path) {
+  const base = String(path || '').split('/').pop() || '';
+  if (CM_NAMED[base]) return CM_NAMED[base];
+  const ext = base.includes('.') ? base.split('.').pop().toLowerCase() : '';
+  return CM_MODES[ext] || CM_MODES[base.toLowerCase()] || null;
+}
+
+function cmTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'neo' : 'material-darker';
+}
+
+function editorVal(which) {
+  const cm = state[which + 'CM'];
+  if (cm) return cm.getValue();
+  const el = document.getElementById(which);
+  return el ? el.value : '';
+}
+
+function editorSet(which, v) {
+  const s = (v == null ? '' : String(v));
+  const cm = state[which + 'CM'];
+  if (cm) { cm.setValue(s); cm.clearHistory(); return; }
+  const el = document.getElementById(which);
+  if (el) el.value = s;
+}
+
+function editorMode(which, path) {
+  const cm = state[which + 'CM'];
+  if (cm) cm.setOption('mode', cmModeFor(path) || '');
+}
+
+function makeCM(id, onChange) {
+  const ta = document.getElementById(id);
+  if (!ta || typeof CodeMirror === 'undefined') return null;
+  const saveBtn = () => {
+    const b = document.getElementById(id === 'wsEditor' ? 'btnWsSave' : 'btnSaveFile');
+    if (b) b.click();
+    return true;
+  };
+  const cm = CodeMirror.fromTextArea(ta, {
+    mode: '',
+    theme: cmTheme(),
+    lineNumbers: true,
+    lineWrapping: true,
+    indentUnit: 2,
+    tabSize: 2,
+    matchBrackets: true,
+    autoCloseBrackets: true,
+    styleActiveLine: true,
+    extraKeys: {
+      Tab: c => (c.somethingSelected() ? c.indentSelection('add') : c.replaceSelection('  ', 'end')),
+      'Ctrl-S': saveBtn,
+      'Cmd-S': saveBtn,
+    },
+  });
+  if (onChange) cm.on('change', onChange);
+  return cm;
+}
+
+function initEditors() {
+  if (typeof CodeMirror === 'undefined') return;
+  if (!state.wsEditorCM) state.wsEditorCM = makeCM('wsEditor', updateWsDirty);
+  if (!state.fileEditorCM) state.fileEditorCM = makeCM('fileEditor', updateDirty);
+}
+
+function refreshEditors() {
+  ['wsEditorCM', 'fileEditorCM'].forEach(k => { if (state[k]) state[k].refresh(); });
+}
+
+function applyCMTheme() {
+  ['wsEditorCM', 'fileEditorCM'].forEach(k => {
+    if (state[k]) state[k].setOption('theme', cmTheme());
+  });
+}
+
 /* ---------------- 工作区（文件树浏览器） ---------------- */
 async function loadWorkspace() {
+  refreshEditors();
   await wsRender('');
 }
 
@@ -431,14 +524,15 @@ async function openWsFile(path, el) {
   state.wsDirty = false;
   $('#wsTitle').textContent = d.path;
   $('#wsHint').textContent = `修改于 ${fmtDT(d.mtime)} · ${d.backups.length} 份历史备份`;
-  $('#wsEditor').value = d.content;
+  editorSet('wsEditor', d.content);
+  editorMode('wsEditor', d.path);
   $('#wsOut').hidden = true;
   updateWsDirty();
 }
 
 function updateWsDirty() {
   const d = state.wsFile;
-  const dirty = d && $('#wsEditor').value !== d.content;
+  const dirty = d && editorVal('wsEditor') !== d.content;
   state.wsDirty = dirty;
   $('#btnWsSave').textContent = dirty ? '保存（有未保存改动）' : '保存（自动备份）';
 }
@@ -449,10 +543,10 @@ $('#btnWsSave').addEventListener('click', async () => {
   if (!state.wsFile) return toast('先选一个文件', true);
   if (!state.wsDirty) return toast('没有改动');
   const d = await post('/api/workspace/file', {
-    path: state.wsFile.path, content: $('#wsEditor').value
+    path: state.wsFile.path, content: editorVal('wsEditor')
   });
   if (!d.ok) { toast(d.error, true); $('#wsOut').hidden = false; $('#wsOut').textContent = d.error; return; }
-  state.wsFile.content = $('#wsEditor').value;
+  state.wsFile.content = editorVal('wsEditor');
   updateWsDirty();
   if (d.changed) {
     toast('已保存并备份：' + d.backup);
@@ -704,6 +798,11 @@ async function send() {
   const msg = ta.value.trim();
   if (!msg) return;
 
+  // 保证处于某个会话中（首次自动创建）
+  if (!state.sessionId) await ensureSession();
+  const sid = state.sessionId;
+  if (!sid) return toast('无法创建会话，请检查目录写入权限', true);
+
   addMsg('me', msg);
   ta.value = ''; ta.style.height = 'auto';
 
@@ -713,7 +812,7 @@ async function send() {
   const useStream = !$('#chkStream') || $('#chkStream').checked;
 
   if (useStream) {
-    await sendStream(msg);
+    await sendStream(msg, sid);
   } else {
     const wait = document.createElement('div');
     wait.className = 'msg ai';
@@ -722,7 +821,7 @@ async function send() {
     $('#chatFlow').scrollTop = $('#chatFlow').scrollHeight;
 
     try {
-      const d = await post('/api/chat', { message: msg });
+      const d = await post('/api/sessions/' + sid + '/chat', { message: msg });
       wait.remove();
       if (d.ok) addMsg('ai', d.reply || '（无输出）', d.ms);
       else { addMsg('ai', '执行失败：' + (d.reply || d.error || '未知错误')); toast('Hermes 未返回成功结果', true); }
@@ -733,12 +832,13 @@ async function send() {
     } finally {
       state.busy = false;
       $('#btnSend').disabled = false;
+      loadSessions();
     }
   }
 }
 
 /* ---------------- 流式对话（SSE） ---------------- */
-async function sendStream(msg) {
+async function sendStream(msg, sid) {
   const flow = $('#chatFlow');
   const el = document.createElement('div');
   el.className = 'msg ai';
@@ -751,7 +851,7 @@ async function sendStream(msg) {
   let ms = 0;
 
   try {
-    const resp = await fetch('/api/chat/stream', {
+    const resp = await fetch('/api/sessions/' + (sid || state.sessionId) + '/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: msg })
@@ -814,6 +914,7 @@ async function sendStream(msg) {
   } finally {
     state.busy = false;
     $('#btnSend').disabled = false;
+    loadSessions();
   }
 }
 
@@ -1189,6 +1290,7 @@ function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
   $('#btnTheme').textContent = t === 'light' ? '◐' : '◑';
   if (state.data) drawChart(state.data.history || []);
+  applyCMTheme();
 }
 (function () {
   const saved = localStorage.getItem(THEME_KEY) ||
@@ -1500,3 +1602,308 @@ $('#btnChatApiSave').addEventListener('click', async () => {
   markPending();
   loadChatApi(); loadAudit();
 });
+
+/* ============================================================
+   多会话聊天
+   ============================================================ */
+async function loadChatView() { await loadSessions(); }
+
+function clearChatFlow() {
+  $('#chatFlow').innerHTML = `
+    <div class="msg sys">
+      <div class="bubble">
+        已连接 Hermes 工作台。<br>
+        消息会通过 <code>hermes run</code> 转发，回答可能较慢（复杂任务 1–3 分钟）。<br>
+        对话按会话持久化，刷新或重开不会丢失。
+      </div>
+    </div>`;
+}
+
+async function loadSessions(ensure) {
+  const box = $('#sessionList');
+  if (!box) return;
+  const d = await api('/api/sessions');
+  if (!d.ok) { box.innerHTML = '<div class="empty">' + escapeHtml(d.error || '加载失败') + '</div>'; return; }
+  const items = d.sessions || [];
+  if (!items.length) {
+    if (ensure !== false && !state.sessionId) {
+      await ensureSession();
+      return loadSessions(false);
+    }
+    box.innerHTML = '<div class="empty">还没有会话</div>';
+    return;
+  }
+  box.innerHTML = items.map(s => `
+    <div class="session-item ${s.id === state.sessionId ? 'active' : ''}" data-id="${escapeHtml(s.id)}">
+      <div class="sess-name">${escapeHtml(s.name)}</div>
+      <div class="sess-meta">${s.count} 条 · ${escapeHtml((s.updated_at || '').slice(5, 16))}</div>
+    </div>`).join('');
+  $$('#sessionList .session-item').forEach(el => {
+    el.addEventListener('click', () => selectSession(el.dataset.id));
+  });
+  if (!state.sessionId) await selectSession(items[0].id);
+}
+
+async function ensureSession() {
+  if (state.sessionId) return state.sessionId;
+  const r = await post('/api/sessions', { name: '默认会话' });
+  if (r.ok && r.session) {
+    state.sessionId = r.session.id;
+    $('#curSessionName').textContent = r.session.name;
+  }
+  return state.sessionId;
+}
+
+async function selectSession(sid) {
+  state.sessionId = sid;
+  $$('#sessionList .session-item').forEach(x =>
+    x.classList.toggle('active', x.dataset.id === sid));
+  const d = await api('/api/sessions/' + sid);
+  clearChatFlow();
+  if (!d.ok) { toast(d.error || '读取会话失败', true); return; }
+  $('#curSessionName').textContent = d.name || sid;
+  const flow = $('#chatFlow');
+  (d.messages || []).forEach(m => {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + (m.role === 'me' ? 'me' : 'ai');
+    const b = document.createElement('div');
+    b.className = 'bubble';
+    b.textContent = m.text || '';
+    wrap.appendChild(b);
+    flow.appendChild(wrap);
+  });
+  flow.scrollTop = flow.scrollHeight;
+}
+
+$('#btnNewSession').addEventListener('click', async () => {
+  const name = prompt('新会话名称', '新会话');
+  if (name === null) return;
+  const r = await post('/api/sessions', { name });
+  if (!r.ok) return toast(r.error, true);
+  toast('已创建会话');
+  state.sessionId = r.session.id;
+  await loadSessions();
+  await selectSession(r.session.id);
+});
+
+$('#btnRenameSession').addEventListener('click', async () => {
+  if (!state.sessionId) return toast('先选一个会话', true);
+  const name = prompt('重命名会话', $('#curSessionName').textContent);
+  if (!name) return;
+  const r = await post('/api/sessions/' + state.sessionId + '/rename', { name });
+  if (!r.ok) return toast(r.error, true);
+  $('#curSessionName').textContent = r.session.name;
+  loadSessions();
+});
+
+$('#btnDeleteSession').addEventListener('click', async () => {
+  if (!state.sessionId) return toast('先选一个会话', true);
+  if (!confirm('删除当前会话及其全部历史？此操作不可恢复。')) return;
+  const r = await post('/api/sessions/' + state.sessionId + '/delete', {});
+  if (!r.ok) return toast(r.error, true);
+  state.sessionId = null;
+  clearChatFlow();
+  $('#curSessionName').textContent = '默认会话';
+  await loadSessions();
+});
+
+/* ============================================================
+   多智能体编排
+   ============================================================ */
+async function loadAgents() {
+  const d = await api('/api/agents');
+  if (!d.ok) { toast(d.error || '加载智能体失败', true); return; }
+  state.agents = d;
+  renderAgents(d.agents || []);
+  renderTeams(d.teams || []);
+  fillRunTeam(d.teams || []);
+}
+
+function renderAgents(list) {
+  const box = $('#agentList');
+  if (!list.length) { box.innerHTML = '<div class="empty">还没有智能体，点右上「＋新建」</div>'; return; }
+  box.innerHTML = list.map(a => `
+    <div class="list-item">
+      <div class="item-main">
+        <div class="item-title">${escapeHtml(a.name || a.id)} <span class="chip-id">${escapeHtml(a.id)}</span></div>
+        <div class="item-desc">${escapeHtml(a.role || '未设角色')}</div>
+      </div>
+      <div class="acts">
+        <button class="btn tiny" data-edit="${escapeHtml(a.id)}">编辑</button>
+        <button class="btn tiny danger" data-del="${escapeHtml(a.id)}">删除</button>
+      </div>
+    </div>`).join('');
+  $$('#agentList [data-edit]').forEach(b => b.addEventListener('click', () => openAgentForm(b.dataset.edit)));
+  $$('#agentList [data-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('删除智能体「' + b.dataset.del + '」？它也会从所有团队中移除。')) return;
+    const r = await api('/api/agents/' + b.dataset.del, { method: 'DELETE' });
+    r.ok ? (toast('已删除'), loadAgents()) : toast(r.error, true);
+  }));
+}
+
+function renderTeams(list) {
+  const box = $('#teamList');
+  if (!list.length) { box.innerHTML = '<div class="empty">还没有团队，点右上「＋新建」</div>'; return; }
+  box.innerHTML = list.map(t => `
+    <div class="list-item">
+      <div class="item-main">
+        <div class="item-title">${escapeHtml(t.name || t.id)} <span class="chip-id">${escapeHtml(t.mode || 'pipeline')}</span></div>
+        <div class="item-desc">${escapeHtml((t.agents || []).join(' → ') || '无成员')}</div>
+      </div>
+      <div class="acts">
+        <button class="btn tiny" data-edit="${escapeHtml(t.id)}">编辑</button>
+        <button class="btn tiny danger" data-del="${escapeHtml(t.id)}">删除</button>
+      </div>
+    </div>`).join('');
+  $$('#teamList [data-edit]').forEach(b => b.addEventListener('click', () => openTeamForm(b.dataset.edit)));
+  $$('#teamList [data-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('删除团队「' + b.dataset.del + '」？')) return;
+    const r = await api('/api/teams/' + b.dataset.del, { method: 'DELETE' });
+    r.ok ? (toast('已删除'), loadAgents()) : toast(r.error, true);
+  }));
+}
+
+function fillRunTeam(teams) {
+  const sel = $('#runTeam');
+  const cur = sel.value;
+  sel.innerHTML = teams.length
+    ? teams.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name || t.id)}（${escapeHtml(t.mode || 'pipeline')}）</option>`).join('')
+    : '<option value="">（先建一个团队）</option>';
+  if (cur) sel.value = cur;
+}
+
+function openAgentForm(id) {
+  const a = id ? ((state.agents || {}).agents || []).find(x => x.id === id) : null;
+  $('#agentFormTitle').textContent = a ? '编辑智能体' : '新建智能体';
+  $('#agId').value = a ? a.id : '';
+  $('#agId').disabled = !!a;
+  $('#agName').value = a ? (a.name || '') : '';
+  $('#agRole').value = a ? (a.role || '') : '';
+  $('#agModel').value = a ? (a.model || '') : '';
+  $('#agPersona').value = a ? (a.persona || '') : '';
+  $('#agentFormPanel').hidden = false;
+  $('#teamFormPanel').hidden = true;
+}
+
+function openTeamForm(id) {
+  const t = id ? ((state.agents || {}).teams || []).find(x => x.id === id) : null;
+  $('#teamFormTitle').textContent = t ? '编辑团队' : '新建团队';
+  $('#tmId').value = t ? t.id : '';
+  $('#tmId').disabled = !!t;
+  $('#tmName').value = t ? (t.name || '') : '';
+  $('#tmMode').value = t ? (t.mode || 'pipeline') : 'pipeline';
+  $('#tmAgents').value = t ? (t.agents || []).join(', ') : '';
+  $('#teamFormPanel').hidden = false;
+  $('#agentFormPanel').hidden = true;
+}
+
+$('#btnNewAgent').addEventListener('click', () => openAgentForm(null));
+$('#btnNewTeam').addEventListener('click', () => openTeamForm(null));
+$('#btnCancelAgent').addEventListener('click', () => { $('#agentFormPanel').hidden = true; });
+$('#btnCancelTeam').addEventListener('click', () => { $('#teamFormPanel').hidden = true; });
+
+$('#btnSaveAgent').addEventListener('click', async () => {
+  const r = await post('/api/agents', {
+    id: $('#agId').value.trim(),
+    name: $('#agName').value.trim(),
+    role: $('#agRole').value.trim(),
+    model: $('#agModel').value.trim(),
+    persona: $('#agPersona').value,
+  });
+  if (!r.ok) return toast(r.error, true);
+  toast('已保存智能体');
+  $('#agentFormPanel').hidden = true;
+  loadAgents(); loadAudit();
+});
+
+$('#btnSaveTeam').addEventListener('click', async () => {
+  const r = await post('/api/teams', {
+    id: $('#tmId').value.trim(),
+    name: $('#tmName').value.trim(),
+    mode: $('#tmMode').value,
+    agents: $('#tmAgents').value.split(',').map(s => s.trim()).filter(Boolean),
+  });
+  if (!r.ok) return toast(r.error, true);
+  toast('已保存团队');
+  $('#teamFormPanel').hidden = true;
+  loadAgents(); loadAudit();
+});
+
+$('#btnRunTeam').addEventListener('click', async () => {
+  const tid = $('#runTeam').value;
+  const task = $('#runTask').value.trim();
+  if (!tid) return toast('先选择团队', true);
+  if (!task) return toast('先填写任务', true);
+
+  const box = $('#agentRuns');
+  const btn = $('#btnRunTeam');
+  box.innerHTML = '';
+  btn.disabled = true;
+  $('#runHint').textContent = '运行中…';
+
+  let resp;
+  try {
+    resp = await fetch('/api/teams/' + tid + '/run/stream', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task })
+    });
+  } catch (e) {
+    toast('请求失败：' + e.message, true);
+    btn.disabled = false; $('#runHint').textContent = '选择团队后下达任务';
+    return;
+  }
+  if (!resp.ok) {
+    const d = await resp.json().catch(() => ({}));
+    toast(d.error || '运行失败', true);
+    btn.disabled = false; $('#runHint').textContent = '选择团队后下达任务';
+    return;
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let curBody = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      let evt;
+      try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+      if (evt.type === 'team_start') {
+        const h = document.createElement('div');
+        h.className = 'run-head';
+        h.textContent = `团队「${evt.team}」· ${evt.mode} · ${evt.n} 个智能体`;
+        box.appendChild(h);
+      } else if (evt.type === 'agent_start') {
+        const sec = document.createElement('div');
+        sec.className = 'agent-run';
+        sec.innerHTML = `<div class="ar-head">▶ ${escapeHtml(evt.agent)}</div><div class="ar-body"></div>`;
+        box.appendChild(sec);
+        curBody = sec.querySelector('.ar-body');
+      } else if (evt.type === 'token') {
+        if (curBody) { curBody.textContent += evt.content || ''; box.scrollTop = box.scrollHeight; }
+      } else if (evt.type === 'agent_done') {
+        if (curBody && !curBody.textContent) curBody.textContent = '（该智能体无输出，退出码 ' + evt.rc + '）';
+        curBody = null;
+      } else if (evt.type === 'error') {
+        const p = curBody || (() => {
+          const d = document.createElement('div'); d.className = 'ar-body'; box.appendChild(d); return d;
+        })();
+        p.textContent += '\n[错误] ' + (evt.content || '');
+      } else if (evt.type === 'team_done') {
+        $('#runHint').textContent = '完成，耗时 ' + ((evt.ms || 0) / 1000).toFixed(1) + 's';
+      }
+    }
+  }
+  btn.disabled = false;
+});
+
+/* ============================================================
+   启动
+   ============================================================ */
+initEditors();

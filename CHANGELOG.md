@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-09-09
+
+### Added
+- **多会话对话**：聊天视图新增会话侧栏——新建 / 切换 / 重命名 / 删除，消息历史持久化到 `sessions/` 目录（每会话一个 JSON），发送自动携带 `session_id`，流式与非流式响应均落盘；重开页面历史自动恢复。
+- **多智能体编排**（新导航「智能体」，视图 13 → 14）：定义智能体（id / 名称 / 角色 / 人设 / 模型）与团队（成员 + 编排模式），三种编排：`sequential` 顺序执行 · `pipeline` 流水线（上游产出自动注入下一位的上下文）· `parallel` 并行执行；点「运行团队」经 SSE 逐步流式展示每个智能体的输出与耗时。定义保存在 `<HERMES_DIR>/agents.yaml`（无 YAML 库时自动降级 JSON）。
+- **CodeMirror 彩色编辑器**：「工作区」与「配置文件」两个编辑器升级为 CodeMirror 5，按扩展名自动选语言（Python / YAML / JavaScript / JSON / Markdown / Shell / Dockerfile / TOML / Go / Rust / SQL / C / XML / CSS / HTML），带行号、括号匹配、自动闭合、当前行高亮，跟随明暗主题切换；全部本地 vendor 化（`static/vendor/codemirror/`，约 500KB），**无 CDN 依赖，离线可用**。
+- 新增 API 13 个（会话 6 + 智能体 3 + 团队 4），端点 43 → **56**。
+- 新增截图：多会话聊天（08）、CodeMirror 高亮（09）、智能体编排（10）及移动端（08b / 10b）。
+
 ## [1.5.1] - 2026-09-09
 
 ### Added

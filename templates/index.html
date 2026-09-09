@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hermes 工作台</title>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/vendor/codemirror/lib/codemirror.min.css">
+<link rel="stylesheet" href="/static/vendor/codemirror/theme/material-darker.min.css">
+<link rel="stylesheet" href="/static/vendor/codemirror/theme/neo.min.css">
 </head>
 <body>
 
@@ -28,6 +31,7 @@
       <button class="nav-item" data-view="skills"><span class="nav-ico">◧</span><span>技能</span></button>
       <button class="nav-item" data-view="memory"><span class="nav-ico">◇</span><span>记忆</span></button>
       <button class="nav-item" data-view="workspace"><span class="nav-ico">▤</span><span>工作区</span></button>
+      <button class="nav-item" data-view="agents"><span class="nav-ico">⬡</span><span>智能体</span></button>
       <button class="nav-item" data-view="task"><span class="nav-ico">◷</span><span>任务</span></button>
       <button class="nav-item" data-view="scan"><span class="nav-ico">◎</span><span>体检</span></button>
       <button class="nav-item" data-view="audit"><span class="nav-ico">≡</span><span>记录</span></button>
@@ -151,31 +155,50 @@
       </div>
     </section>
 
-    <!-- ---------- 对话 ---------- -->
+    <!-- ---------- 对话（多会话） ---------- -->
     <section class="view" id="view-chat">
-      <div class="chat-wrap">
-        <div class="chat-flow" id="chatFlow">
-          <div class="msg sys">
-            <div class="bubble">
-              已连接 Hermes 工作台。<br>
-              消息会通过 <code>hermes run</code> 转发，回答可能较慢（复杂任务 1–3 分钟）。
+      <div class="chat-layout">
+        <aside class="session-col">
+          <div class="session-head">
+            <span>会话</span>
+            <button class="btn tiny" id="btnNewSession" title="新建会话">＋</button>
+          </div>
+          <div class="session-list" id="sessionList"><div class="empty">加载中…</div></div>
+        </aside>
+
+        <div class="chat-wrap">
+          <div class="chat-top">
+            <span class="cur-session" id="curSessionName">默认会话</span>
+            <span class="acts">
+              <button class="btn tiny" id="btnRenameSession">改名</button>
+              <button class="btn tiny danger" id="btnDeleteSession">删除</button>
+            </span>
+          </div>
+
+          <div class="chat-flow" id="chatFlow">
+            <div class="msg sys">
+              <div class="bubble">
+                已连接 Hermes 工作台。<br>
+                消息会通过 <code>hermes run</code> 转发，回答可能较慢（复杂任务 1–3 分钟）。<br>
+                对话按会话持久化，刷新或重开不会丢失。
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="quick" id="quick">
-          <button class="chip" data-q="检查自身状态：容器是否健康、磁盘用量、最近 24h 有没有报错日志">自检状态</button>
-          <button class="chip" data-q="列出当前已安装的技能，并说明各自用途">列出技能</button>
-          <button class="chip" data-q="总结你记忆里关于我的信息">你是怎么记住我的</button>
-          <button class="chip" data-q="检查磁盘占用最大的目录，给出清理建议">磁盘占用</button>
-        </div>
+          <div class="quick" id="quick">
+            <button class="chip" data-q="检查自身状态：容器是否健康、磁盘用量、最近 24h 有没有报错日志">自检状态</button>
+            <button class="chip" data-q="列出当前已安装的技能，并说明各自用途">列出技能</button>
+            <button class="chip" data-q="总结你记忆里关于我的信息">你是怎么记住我的</button>
+            <button class="chip" data-q="检查磁盘占用最大的目录，给出清理建议">磁盘占用</button>
+          </div>
 
-        <div class="composer">
-          <label class="stream-toggle" title="流式模式：逐 token 返回 + 工具调用可视化">
-            <input type="checkbox" id="chkStream" checked> 流式
-          </label>
-          <textarea id="chatInput" rows="1" placeholder="给 Hermes 下指令…  (Enter 发送 / Shift+Enter 换行)"></textarea>
-          <button class="btn send" id="btnSend">发送</button>
+          <div class="composer">
+            <label class="stream-toggle" title="流式模式：逐 token 返回 + 工具调用可视化">
+              <input type="checkbox" id="chkStream" checked> 流式
+            </label>
+            <textarea id="chatInput" rows="1" placeholder="给 Hermes 下指令…  (Enter 发送 / Shift+Enter 换行)"></textarea>
+            <button class="btn send" id="btnSend">发送</button>
+          </div>
         </div>
       </div>
     </section>
@@ -463,6 +486,75 @@
       </div>
     </section>
 
+    <!-- ---------- 智能体（多智能体编排） ---------- -->
+    <section class="view" id="view-agents">
+      <div class="agents-layout">
+        <div class="agents-manage">
+          <div class="panel">
+            <div class="panel-head"><h3>智能体</h3>
+              <button class="btn tiny" id="btnNewAgent">＋新建</button></div>
+            <div class="list" id="agentList"><div class="empty">加载中…</div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h3>团队 / 编排</h3>
+              <button class="btn tiny" id="btnNewTeam">＋新建</button></div>
+            <div class="list" id="teamList"><div class="empty">加载中…</div></div>
+          </div>
+        </div>
+
+        <div class="agent-editor">
+          <div class="panel" id="agentFormPanel" hidden>
+            <div class="panel-head"><h3 id="agentFormTitle">新建智能体</h3></div>
+            <div class="form-card">
+              <label>ID（字母数字 -_）<input id="agId" class="inp" placeholder="coder"></label>
+              <label>名称<input id="agName" class="inp" placeholder="程序员"></label>
+              <label>角色<input id="agRole" class="inp" placeholder="资深后端工程师"></label>
+              <label>模型（可选）<input id="agModel" class="inp" placeholder="留空用默认"></label>
+              <label>人设 / 系统提示词<textarea id="agPersona" class="inp" rows="4" placeholder="你是一名…"></textarea></label>
+              <div class="ed-bar">
+                <button class="btn" id="btnSaveAgent">保存智能体</button>
+                <button class="btn ghost" id="btnCancelAgent">取消</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" id="teamFormPanel" hidden>
+            <div class="panel-head"><h3 id="teamFormTitle">新建团队</h3></div>
+            <div class="form-card">
+              <label>ID（字母数字 -_）<input id="tmId" class="inp" placeholder="review"></label>
+              <label>名称<input id="tmName" class="inp" placeholder="代码评审流水线"></label>
+              <label>编排模式
+                <select id="tmMode" class="inp">
+                  <option value="pipeline">pipeline（流水线：后一个拿到前一个产出）</option>
+                  <option value="sequential">sequential（顺序，各自独立）</option>
+                  <option value="parallel">parallel（并行，各自独立）</option>
+                </select>
+              </label>
+              <label>成员（智能体 ID，逗号分隔）<input id="tmAgents" class="inp" placeholder="coder,reviewer"></label>
+              <div class="ed-bar">
+                <button class="btn" id="btnSaveTeam">保存团队</button>
+                <button class="btn ghost" id="btnCancelTeam">取消</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h3>运行编排</h3>
+              <select id="runTeam" class="inp" style="width:auto"></select>
+            </div>
+            <div class="form-card">
+              <label>任务<textarea id="runTask" class="inp" rows="3" placeholder="给团队下达的任务…"></textarea></label>
+              <div class="ed-bar">
+                <button class="btn" id="btnRunTeam">▶ 运行</button>
+                <span class="hint" id="runHint">选择团队后下达任务</span>
+              </div>
+            </div>
+            <div class="agent-runs" id="agentRuns"><div class="empty">运行后这里按智能体展示产出</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ---------- 任务 ---------- -->
     <section class="view" id="view-task">
       <div class="panel">
@@ -646,6 +738,26 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- CodeMirror 5（本地 vendor，离线可用，VSCode 风格语法高亮） -->
+<script src="/static/vendor/codemirror/lib/codemirror.min.js"></script>
+<script src="/static/vendor/codemirror/addon/mode/simple.js"></script>
+<script src="/static/vendor/codemirror/mode/python/python.js"></script>
+<script src="/static/vendor/codemirror/mode/yaml/yaml.js"></script>
+<script src="/static/vendor/codemirror/mode/javascript/javascript.js"></script>
+<script src="/static/vendor/codemirror/mode/markdown/markdown.js"></script>
+<script src="/static/vendor/codemirror/mode/shell/shell.js"></script>
+<script src="/static/vendor/codemirror/mode/dockerfile/dockerfile.js"></script>
+<script src="/static/vendor/codemirror/mode/toml/toml.js"></script>
+<script src="/static/vendor/codemirror/mode/clike/clike.js"></script>
+<script src="/static/vendor/codemirror/mode/go/go.js"></script>
+<script src="/static/vendor/codemirror/mode/rust/rust.js"></script>
+<script src="/static/vendor/codemirror/mode/sql/sql.js"></script>
+<script src="/static/vendor/codemirror/mode/xml/xml.js"></script>
+<script src="/static/vendor/codemirror/mode/css/css.js"></script>
+<script src="/static/vendor/codemirror/mode/htmlmixed/htmlmixed.js"></script>
+<script src="/static/vendor/codemirror/addon/edit/matchbrackets.min.js"></script>
+<script src="/static/vendor/codemirror/addon/edit/closebrackets.min.js"></script>
+<script src="/static/vendor/codemirror/addon/selection/active-line.min.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

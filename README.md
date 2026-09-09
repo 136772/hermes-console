@@ -11,11 +11,11 @@
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 Plain Flask + hand-drawn Canvas. **No frontend build, no chart library, no `node_modules`.**
-3 pip dependencies. 43 API endpoints. 13 views. 12 alert channels. 29 smoke tests + CI.
+3 pip dependencies. 56 API endpoints. 14 views. 12 alert channels. 29 smoke tests + CI.
 
 ---
 
-All 13 views, including the workspace editor, are responsive down to 390 px phones.
+All 14 views, including the workspace editor, are responsive down to 390 px phones.
 
 ## Screenshots
 
@@ -30,6 +30,14 @@ All 13 views, including the workspace editor, are responsive down to 390 px phon
 | Workspace | MCP |
 |:---:|:---:|
 | ![workspace](docs/screenshots/05-workspace.png) | ![mcp](docs/screenshots/06-mcp.png) |
+
+| Multi-session chat | CodeMirror editor |
+|:---:|:---:|
+| ![chat-sessions](docs/screenshots/08-chat-sessions.png) | ![codemirror](docs/screenshots/09-workspace-codemirror.png) |
+
+| Agent orchestration | Mobile (agents) |
+|:---:|:---:|
+| ![agents](docs/screenshots/10-agents.png) | ![mobile-agents](docs/screenshots/10b-mobile-agents.png) |
 
 | Mobile (drawer) | Mobile (workspace) |
 |:---:|:---:|
@@ -53,7 +61,8 @@ And it lets you fix things from a browser instead of SSH-ing into the box at 1am
 | View | What it does | Why you'd care |
 |---|---|---|
 | **Overview** | 6 status cards + 60-minute trend + resource bars + recent errors | One glance: is today normal? |
-| **Chat** | Talk to your agent from the browser. **Streaming (SSE)** token-by-token, with tool-call cards | No SSH just to give it an instruction |
+| **Chat** | Talk to your agent from the browser. **Multi-session** — create / switch / rename / delete, history persisted server-side. **Streaming (SSE)** token-by-token, with tool-call cards | No SSH just to give it an instruction |
+| **Agents** | Define agents (role / persona / model) and teams, then orchestrate: **sequential / pipeline / parallel**. Each agent's output streams live (SSE); pipeline feeds upstream output into the next agent's context | One task, a crew of specialists |
 | **Config** | Edit `config.yaml` / `.env` / `SOUL.md` / skills / cron in-browser | Stop hand-editing YAML over SSH |
 | **Cost** | Token + spend by day/week/month, per-model breakdown, budget alerts | Monitoring tells you it broke. Cost tells you whether to keep it. |
 | **Alerts** | 12 channels, schema-driven forms, per-channel test button | Find out it died, don't discover it |
@@ -170,7 +179,7 @@ Pre-built multi-arch image (amd64 / arm64) — skip the local build:
 docker compose pull
 docker compose up -d
 # or pin a version: docker compose pull hermes-console && docker compose up -d
-#   image: 136772/hermes-console:v1.5.0
+#   image: 136772/hermes-console:v1.6.0
 ```
 
 ### Deployment modes
@@ -261,7 +270,7 @@ hermes dashboard --port 9119
 
 ## API
 
-43 endpoints (plus `/` and the `/proxy/<path>` layer). Highlights:
+56 endpoints (plus `/` and the `/proxy/<path>` layer). Highlights:
 
 | Path | Method | Notes |
 |---|---|---|
@@ -276,6 +285,11 @@ hermes dashboard --port 9119
 | `/api/file` | GET/POST | Read/write config (backup + validation) |
 | `/api/workspace` | GET | List a directory in the Hermes data dir (the workspace tree) |
 | `/api/workspace/file` | GET/POST | Read / write any text file in the workspace (backup + validation) |
+| `/api/sessions` | GET/POST | **Multi-session chat**: list / create; history persisted per session |
+| `/api/sessions/<sid>/…` | GET/POST | Session detail / rename / delete / chat (+ `/chat/stream` SSE) |
+| `/api/agents` | GET/POST | **Agent definitions** (role / persona / model), DELETE per agent |
+| `/api/teams` | GET/POST | **Teams** (members + `sequential` / `pipeline` / `parallel`), DELETE per team |
+| `/api/teams/<tid>/run/stream` | POST | Run a team orchestration, per-agent output streamed (SSE) |
 | `/api/mcp` | GET/POST | List / save MCP servers (config.yaml `mcp_servers`, comment-preserving) |
 | `/api/mcp/test` | POST | Connectivity test for one MCP server (`hermes mcp test <name>`) |
 | `/api/rollback` | POST | Rollback (snapshots current state first) |

@@ -1220,6 +1220,277 @@ def api_chat_stream():
 
 
 # ============================================================
+# 多会话聊天（消息历史持久化到 HERMES_DIR/sessions）
+# ============================================================
+
+@app.route("/api/sessions", methods=["GET", "POST"])
+def api_sessions():
+    if request.method == "POST":
+        g = _writable_guard()
+        if g:
+            return g
+        d = request.get_json(silent=True) or {}
+        try:
+            s = ctl.create_session(HERMES_DIR, d.get("name", ""), d.get("model", ""))
+            return jsonify({"ok": True, "session": s})
+        except ctl.CtlError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, **ctl.list_sessions(HERMES_DIR)})
+
+
+@app.route("/api/sessions/<sid>", methods=["GET"])
+def api_session_get(sid):
+    try:
+        s = ctl.get_session(HERMES_DIR, sid)
+        return jsonify({"ok": True, **s})
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+
+
+@app.route("/api/sessions/<sid>/rename", methods=["POST"])
+def api_session_rename(sid):
+    g = _writable_guard()
+    if g:
+        return g
+    d = request.get_json(silent=True) or {}
+    try:
+        s = ctl.rename_session(HERMES_DIR, sid, d.get("name", ""), _actor())
+        return jsonify({"ok": True, "session": s})
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@app.route("/api/sessions/<sid>/delete", methods=["POST"])
+def api_session_delete(sid):
+    g = _writable_guard()
+    if g:
+        return g
+    try:
+        ctl.delete_session(HERMES_DIR, sid, _actor())
+        return jsonify({"ok": True})
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@app.route("/api/sessions/<sid>/chat", methods=["POST"])
+def api_session_chat(sid):
+    g = _writable_guard()
+    if g:
+        return g
+    d = request.get_json(silent=True) or {}
+    msg = (d.get("message") or "").strip()
+    if not msg:
+        return jsonify({"ok": False, "error": "空消息"}), 400
+    if len(msg) > 4000:
+        return jsonify({"ok": False, "error": "消息过长"}), 400
+    try:
+        ctl.append_message(HERMES_DIR, sid, "me", msg)
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    t0 = time.time()
+    rc, out, err = hermes_exec(["hermes", "run", msg])
+    text = out if out else err
+    if rc != 0 and not text:
+        text = f"（执行失败，退出码 {rc}）"
+    ms = int((time.time() - t0) * 1000)
+    ctl.append_message(HERMES_DIR, sid, "ai", text, ms)
+    return jsonify({"ok": rc == 0, "reply": text, "ms": ms})
+
+
+@app.route("/api/sessions/<sid>/chat/stream", methods=["POST"])
+def api_session_chat_stream(sid):
+    """流式会话对话：先把用户消息落盘，再逐 token 回流，结束再落盘 AI 回复。"""
+    d = request.get_json(silent=True) or {}
+    msg = (d.get("message") or "").strip()
+    if not msg:
+        return jsonify({"ok": False, "error": "空消息"}), 400
+    if len(msg) > 4000:
+        return jsonify({"ok": False, "error": "消息过长"}), 400
+    try:
+        ctl.append_message(HERMES_DIR, sid, "me", msg)
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+
+    def generate():
+        t0 = time.time()
+        ai_text = ""
+        rc = 1
+        try:
+            cmd = (["docker", "exec", CONTAINER, "hermes", "run", "--json", "--stream", msg]
+                   if MODE == "docker"
+                   else ["hermes", "run", "--json", "--stream", msg])
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True)
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    evt = json.loads(line)
+                except json.JSONDecodeError:
+                    evt = {"type": "token", "content": line}
+                if evt.get("type") == "token":
+                    ai_text += evt.get("content", "")
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+            proc.wait(timeout=CHAT_TIMEOUT)
+            rc = proc.returncode
+            if rc != 0 and not ai_text:
+                ai_text = (proc.stderr.read() or "").strip() or f"（执行失败，退出码 {rc}）"
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+            except Exception:                                       # noqa
+                pass
+            rc = 124
+            ai_text += "\n[执行超时]"
+            yield f"data: {json.dumps({'type': 'error', 'content': '执行超时'}, ensure_ascii=False)}\n\n"
+        except FileNotFoundError:
+            rc = 127
+            yield f"data: {json.dumps({'type': 'error', 'content': 'hermes 命令不存在'}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            rc = 1
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
+        ms = int((time.time() - t0) * 1000)
+        try:
+            ctl.append_message(HERMES_DIR, sid, "ai", ai_text, ms)
+        except Exception:                                           # noqa
+            pass
+        yield f"data: {json.dumps({'type': 'done', 'ms': ms, 'rc': rc}, ensure_ascii=False)}\n\n"
+
+    return Response(stream_with_context(generate()),
+                    content_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache",
+                             "X-Accel-Buffering": "no"})
+
+
+# ============================================================
+# 多智能体编排（agents.yaml）
+# ============================================================
+
+@app.route("/api/agents", methods=["GET", "POST"])
+def api_agents():
+    if request.method == "POST":
+        g = _writable_guard()
+        if g:
+            return g
+        d = request.get_json(silent=True) or {}
+        try:
+            a = ctl.save_agent(HERMES_DIR, d, _actor())
+            return jsonify({"ok": True, "agent": a})
+        except ctl.CtlError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, **ctl.list_agents(HERMES_DIR)})
+
+
+@app.route("/api/agents/<aid>", methods=["DELETE"])
+def api_agent_del(aid):
+    g = _writable_guard()
+    if g:
+        return g
+    try:
+        r = ctl.delete_agent(HERMES_DIR, aid, _actor())
+        return jsonify({"ok": True, **r})
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@app.route("/api/teams", methods=["GET", "POST"])
+def api_teams():
+    if request.method == "POST":
+        g = _writable_guard()
+        if g:
+            return g
+        d = request.get_json(silent=True) or {}
+        try:
+            t = ctl.save_team(HERMES_DIR, d, _actor())
+            return jsonify({"ok": True, "team": t})
+        except ctl.CtlError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, **ctl.list_agents(HERMES_DIR)})
+
+
+@app.route("/api/teams/<tid>", methods=["DELETE"])
+def api_team_del(tid):
+    g = _writable_guard()
+    if g:
+        return g
+    try:
+        r = ctl.delete_team(HERMES_DIR, tid, _actor())
+        return jsonify({"ok": True, **r})
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@app.route("/api/teams/<tid>/run/stream", methods=["POST"])
+def api_team_run(tid):
+    """流式编排：按团队模式依次/流水线驱动各智能体，逐 token 回流。"""
+    d = request.get_json(silent=True) or {}
+    task = (d.get("task") or "").strip()
+    if not task:
+        return jsonify({"ok": False, "error": "空任务"}), 400
+    info = ctl.list_agents(HERMES_DIR)
+    team = next((t for t in info.get("teams", []) if t.get("id") == tid), None)
+    if not team:
+        return jsonify({"ok": False, "error": "团队不存在"}), 404
+    agents_map = {a["id"]: a for a in info.get("agents", [])}
+    members = [agents_map[x] for x in team.get("agents", []) if x in agents_map]
+    if not members:
+        return jsonify({"ok": False, "error": "团队没有可用的智能体成员"}), 400
+    mode = team.get("mode", "pipeline")
+
+    def generate():
+        t0 = time.time()
+        prev = ""
+        yield f"data: {json.dumps({'type': 'team_start', 'team': team.get('name', tid), 'mode': mode, 'n': len(members)}, ensure_ascii=False)}\n\n"
+        for ag in members:
+            prompt = ctl.build_agent_prompt(ag, task, prev if mode == "pipeline" else "")
+            yield f"data: {json.dumps({'type': 'agent_start', 'agent': ag.get('name', ag['id']), 'id': ag['id']}, ensure_ascii=False)}\n\n"
+            atext = ""
+            rc = 1
+            try:
+                cmd = ctl.agent_run_cmd(prompt, MODE, CONTAINER)
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE, text=True)
+                for line in proc.stdout:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        evt = json.loads(line)
+                    except json.JSONDecodeError:
+                        evt = {"type": "token", "content": line}
+                    if evt.get("type") == "token":
+                        atext += evt.get("content", "")
+                        yield f"data: {json.dumps({'type': 'token', 'aid': ag['id'], 'content': evt.get('content', '')}, ensure_ascii=False)}\n\n"
+                    else:
+                        yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                proc.wait(timeout=CHAT_TIMEOUT)
+                rc = proc.returncode
+            except subprocess.TimeoutExpired:
+                try:
+                    proc.kill()
+                except Exception:                               # noqa
+                    pass
+                rc = 124
+                yield f"data: {json.dumps({'type': 'error', 'content': '执行超时'}, ensure_ascii=False)}\n\n"
+            except FileNotFoundError:
+                rc = 127
+                yield f"data: {json.dumps({'type': 'error', 'content': 'hermes 命令不存在'}, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                rc = 1
+                yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'agent_done', 'aid': ag['id'], 'rc': rc}, ensure_ascii=False)}\n\n"
+            prev = atext
+        ms = int((time.time() - t0) * 1000)
+        yield f"data: {json.dumps({'type': 'team_done', 'ms': ms}, ensure_ascii=False)}\n\n"
+
+    return Response(stream_with_context(generate()),
+                    content_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache",
+                             "X-Accel-Buffering": "no"})
+
+
+# ============================================================
 # 代理层：转发到 Hermes 官方 FastAPI 仪表盘后端
 # ============================================================
 import requests as _requests

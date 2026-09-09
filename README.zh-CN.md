@@ -11,12 +11,12 @@
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 纯 Flask + 原生 Canvas，**无前端构建、无第三方图表库、无外部监控依赖**。
-3 个 pip 依赖，43 个 API，13 个视图，12 种告警渠道，零 node_modules。
+3 个 pip 依赖，56 个 API，14 个视图，12 种告警渠道，零 node_modules。
 29 项冒烟测试 + GitHub Actions CI。
 
 ---
 
-所有 13 个视图（包括工作区编辑器）都做了移动端响应式，390 px 手机可用。
+所有 14 个视图（包括工作区编辑器）都做了移动端响应式，390 px 手机可用。
 
 ## 截图
 
@@ -31,6 +31,14 @@
 | 工作区 | MCP 管理 |
 |:---:|:---:|
 | ![workspace](docs/screenshots/05-workspace.png) | ![mcp](docs/screenshots/06-mcp.png) |
+
+| 多会话对话 | CodeMirror 编辑器 |
+|:---:|:---:|
+| ![chat-sessions](docs/screenshots/08-chat-sessions.png) | ![codemirror](docs/screenshots/09-workspace-codemirror.png) |
+
+| 智能体编排 | 移动端（智能体） |
+|:---:|:---:|
+| ![agents](docs/screenshots/10-agents.png) | ![mobile-agents](docs/screenshots/10b-mobile-agents.png) |
 
 | 移动端（抽屉） | 移动端（工作区） |
 |:---:|:---:|
@@ -115,14 +123,14 @@ python app.py
 
 ---
 
-## 一、13 个视图
+## 一、14 个视图
 
-一共 **13 个视图**：
+一共 **14 个视图**：
 
 | 页 | 内容 | 为什么值得盯 |
 |---|---|---|
 | **总览** | 6 张状态卡（运行状态 / 配额用量 / 记忆文件 / 活跃技能 / 24h 错误 / 系统负载）+ 60 分钟趋势图 + 系统资源条 + 最近错误样本 + **三级活体探测** | 一眼判断"今天它正不正常"。探测分三级：进程可达 → 数据可写 → 模型连通，详见[活体探测为什么要分三级](#活体探测为什么要分三级) |
-| **对话** | 网页里直接给 Hermes 下指令，带耗时显示和 4 个快捷指令。**流式模式**逐 token 返回 + 工具调用可视化卡片 | 不用 SSH 进 NAS 也能使唤它 |
+| **对话** | 网页里直接给 Hermes 下指令，带耗时显示和 4 个快捷指令。**流式模式**逐 token 返回 + 工具调用可视化卡片。**多会话**：新建 / 切换 / 重命名 / 删除，历史落盘，重开页面自动恢复 | 不用 SSH 进 NAS 也能使唤它 |
 | **配置** | 五个子页：配置文件编辑器 / MCP 服务器 / Provider 与 Key / **对话接口** / 系统动作 | **以后再也不用进后台改东西** |
 | **成本** | 今日 / 7 天 / 30 天 token 与花费，按模型分解，30 天柱状图；预算与告警渠道管理 | 监控告诉你它坏没坏，成本告诉你**值不值得继续养** |
 | **技能** | 列出所有技能及 `description`，可禁用、恢复、归档、从 Hub 安装 | 技能膨胀 / 被塞了陌生技能，一眼看见 |
@@ -134,6 +142,7 @@ python app.py
 | **功能** | Hermes 命令台：doctor / update / memory / curator / session / skills / mcp / tools / model / profile，白名单放行 | Hermes CLI 能干的，在网页里点点就行 |
 | **系统** | 版本号 + 上游版本比对、**一键升级 Hermes / 升级工作台（git pull）**、跑 doctor、修改登录密码 | 不用再手敲 git 和 update |
 | **工作区** | 浏览整个 Hermes 数据目录的文件树，读 / 写任意文本文件（自动备份 + 语法校验 + 越界防护） | 看见并改全貌，而不只是白名单里的配置 |
+| **智能体** | 定义智能体（id / 名称 / 角色 / 人设 / 模型）与团队（成员 + 编排模式），三种编排：`sequential` 顺序 · `pipeline` 流水线（上游产出自动注入下一位上下文）· `parallel` 并行；点「运行团队」经 SSE 逐步展示每个智能体的输出与耗时 | 一个任务，一组专家接力 |
 
 ---
 
@@ -295,7 +304,7 @@ docker compose up -d --build
 > docker compose pull          # 拉 136772/hermes-console:latest（compose 已配好）
 > docker compose up -d
 > # 想锁版本：docker compose pull hermes-console && docker compose up -d
-> #   镜像 tag 也可写成 136772/hermes-console:v1.5.0
+> #   镜像 tag 也可写成 136772/hermes-console:v1.6.0
 > ```
 > Caddy 反代已内置，`docker compose up -d` 会同时起 `caddy`（发布 8080 + 透传 WebSocket）。
 
@@ -579,16 +588,17 @@ hermes dashboard --port 9119
 
 ```
 hermes-console/
-├── app.py                  # Flask 后端：采集 + 登录守卫 + 43 个 API（1293 行）
+├── app.py                  # Flask 后端：采集 + 登录守卫 + 56 个 API（1564 行）
 ├── auth.py                 # 登录鉴权：PBKDF2 哈希 + 初始密码文件 + 强制改密 + 失败锁定
-├── hermes_ctl.py           # 控制层：文件/MCP/env/cron/技能/备份/审计/配置开关/Hermes 命令
+├── hermes_ctl.py           # 控制层：文件/MCP/env/cron/技能/备份/审计/配置开关/Hermes 命令 + 会话/智能体存储
 ├── cost.py                 # token 与成本统计、价格表、预算
 ├── notify.py               # 告警推送（12 种渠道：飞书加签/Slack/Bark/PushPlus/Server酱/Gotify/自定义…）+ 冷却
 ├── VERSION                 # 当前版本号（页面「系统」展示，自更新比对用）
-├── templates/index.html    # 单页，12 个视图 + 登录层
+├── templates/index.html    # 单页，14 个视图 + 登录层
 ├── static/
 │   ├── style.css           # 深色科技风 + 亮色主题，纯 CSS 变量
-│   └── app.js              # Canvas 手绘趋势图 + 流式对话 + 配置中心 + 60s 自动刷新
+│   ├── app.js              # Canvas 手绘趋势图 + 流式对话 + 多会话 + 智能体编排 + CodeMirror 接入
+│   └── vendor/codemirror/  # CodeMirror 5 本地 vendor（约 500KB，离线可用，无 CDN 依赖）
 ├── install.sh              # ★ 通用一键部署脚本（747 行）：自动识别系统/架构/国内源，三选一模式
 ├── health-check.sh         # 运行时体检
 ├── security-check.sh       # 安全基线自检
@@ -601,7 +611,7 @@ hermes-console/
 ├── test_smoke.py           # 冒烟测试：29 项（含鉴权、代理层、SSE、配置读写）
 ├── requirements.txt        # 只依赖 Flask + ruamel.yaml + requests（告警全用标准库）
 ├── docs/
-│   ├── screenshots/        # 4 张真实截图
+│   ├── screenshots/        # 15 张真实截图
 │   └── PROMOTION.md        # 推广物料：上游 PR 草稿 + Reddit/HN/博客文案
 ├── .github/
 │   ├── workflows/          # ci.yml（语法 + 测试）、docker.yml（Docker Hub 多架构构建）
@@ -625,6 +635,8 @@ hermes-console/
 | `/api/probe` | GET/POST | 活体探测，`{"deep":true}` 触发 L3 |
 | `/api/chat` | POST | `{"message":"..."}` 转发给 Hermes |
 | `/api/chat/stream` | POST | 流式对话（SSE）：逐 token 返回 + 工具调用事件 |
+| `/api/sessions` | GET/POST | **多会话**：列表 / 创建（历史逐会话落盘到 `sessions/`） |
+| `/api/sessions/<sid>/…` | GET/POST | 会话详情 / 重命名 / 删除 / 对话（`/chat/stream` 为 SSE 流式） |
 | `/proxy/<path>` | ANY | 代理转发到 Hermes 官方仪表盘后端（FastAPI :9119）；普通 HTTP 继承工作台鉴权，WebSocket 升级由前置 Caddy 直连上游 |
 | `/api/skills` | GET | 技能列表 |
 | `/api/memories` | GET | 记忆文件列表 |
@@ -655,7 +667,15 @@ hermes-console/
 | `/api/action` | POST | `restart` / `upgrade` / `reload-mcp` |
 | `/api/audit` | GET | 变更审计（最近 120 条） |
 
-> 共 **43 个 API 端点**（另有 `/` 页面 与 `/proxy/<path>` 代理层）。
+**智能体编排类**（v1.6.0 新增）
+
+| 路径 | 方法 | 说明 |
+|---|---|---|
+| `/api/agents` | GET/POST | 智能体定义（id / 名称 / 角色 / 人设 / 模型）；`DELETE /api/agents/<aid>` 删除 |
+| `/api/teams` | GET/POST | 团队定义（成员 + `sequential` / `pipeline` / `parallel`）；`DELETE /api/teams/<tid>` 删除 |
+| `/api/teams/<tid>/run/stream` | POST | 运行团队编排（SSE：逐个智能体流式输出 + 耗时；pipeline 模式上游产出注入下一位上下文） |
+
+> 共 **56 个 API 端点**（另有 `/` 页面 与 `/proxy/<path>` 代理层）。
 
 **成本与告警**
 
