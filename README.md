@@ -312,6 +312,7 @@ What's shipped is stable and battle-tested on a FNOS NAS; the items below are **
 | **Metrics** | Persist trend history across restarts (SQLite) | The 60-min trend resets when the console restarts |
 | **Security** | TOTP two-factor on top of the single password | Password + lockout only |
 | **Editor** | Cross-file search & replace in the workspace tree | Per-file only |
+| **UI** | Bilingual interface — 中文 / English toggle (i18n) | UI text is Chinese-only today; only the docs are bilingual |
 | **Scale** | Monitor multiple Hermes instances / data dirs from one console | One console = one `HERMES_DIR` today |
 
 ---
