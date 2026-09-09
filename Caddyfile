@@ -1,0 +1,30 @@
+{
+    # NAS 内网 / 已在外层做 TLS 时关闭自动 HTTPS。
+    # 如需公网 HTTPS：自行配证书，或在更外层再套一层反代。
+    auto_https off
+}
+
+:80 {
+    # ── WebSocket 透传（补全 /proxy 层缺失的 WS 支持）──
+    # 官方 dashboard 的 chat / terminal 走 WebSocket（FastAPI WebSocket + PTY）。
+    # Flask 是 WSGI（requests 库转发），处理不了 Upgrade 握手，
+    # 所以 WS 由 Caddy 直接连官方后端 HERMES_API，不经 Flask。
+    #
+    # 剥掉可能的 /proxy 前缀：Flask 的 /proxy/<path> 路由本就会剥前缀再转发，
+    # 这里保持同样语义，兼容官方前端「带 /proxy 前缀」或「不带前缀」两种 WS URL 写法。
+    #
+    # 鉴权：沿用官方后端自身的 ws-ticket（iframe 内先走 HTTP 拿 ticket，再连 WS）。
+    @ws header Connection *Upgrade*
+    handle @ws {
+        uri strip_prefix /proxy
+        reverse_proxy {$HERMES_API} {
+            flush_interval -1
+        }
+    }
+
+    # ── 其余请求（含 /proxy/ 的普通 HTTP）→ Flask 工作台 ──
+    # 这部分仍继承工作台的登录鉴权（before_request 守卫）。
+    handle {
+        reverse_proxy hermes-console:8081
+    }
+}

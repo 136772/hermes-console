@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-09-09
+
+### Added
+- **工作区文件树浏览器**（新导航「工作区」）：浏览整个 Hermes 数据目录的任意子目录，读 / 写任意文本文件。复用既有自动备份、语法校验、目录穿越防护；与「配置文件」白名单编辑器互补——前者只改核心配置，后者可看全貌。
+- **MCP 一键连通测试**：MCP 管理页每个服务器新增「测试连接」按钮，调用 `hermes mcp test <name>`（复用 docker exec 机制），输出原样展示。
+- 新增 API：`/api/workspace`（列目录）、`/api/workspace/file`（GET/POST 读写）、`/api/mcp/test`（POST）。API 端点 40 → 44。
+
+### Changed
+- 中文 README 的 `/proxy` 与 API 章节同步 WebSocket 经前置 Caddy 透传的说明。
+
+## [1.4.0] - 2026-09-09
+
+### Added
+- **WebSocket 代理补全**：嵌入的官方 dashboard 之前 chat/terminal 实时功能失效（Flask 是 WSGI，处理不了 WS 升级）。`docker-compose.yml` 新增 `caddy` 前置反代服务，由它对外发布 `8080` 并把 `/proxy/*` 的 WebSocket 升级直连官方后端 `HERMES_API`，剥掉 `/proxy` 前缀。
+- 工作台容器改为只监听内部 `8081`（不再直接对公网暴露），新增 `Caddyfile` 反代配置。
+
+### Changed
+- 修正文档中「`/proxy/*` 全部继承工作台鉴权」的失真表述：普通 HTTP 仍继承控制台登录鉴权；WebSocket 路径由前置 Caddy 终结、鉴权沿用官方后端自身的 `ws-ticket`。
+
 ## [1.3.1] - 2026-09-09
 
 ### Added

@@ -343,6 +343,106 @@ def validate_content(rel, content):
 
 
 # ============================================================
+# 3.1 工作区文件树浏览（不限 EDITABLE 白名单，可浏览 base 内任意文本文件）
+# ============================================================
+
+#: 工作区编辑器允许打开的文本类型；其余（二进制/大日志）不进编辑器，避免误改。
+WS_TEXT_EXT = {
+    ".md", ".yaml", ".yml", ".json", ".txt", ".toml", ".ini", ".cfg",
+    ".conf", ".env", ".sh", ".bash", ".py", ".js", ".ts", ".jsx", ".tsx",
+    ".css", ".html", ".htm", ".csv", ".log", ".xml", ".sql", ".gitignore",
+    ".dockerfile", ".lock", ".toml",
+}
+#: 工作区里直接跳过的目录（我们的备份目录、版本库元数据）
+WS_SKIP_DIRS = {".dashboard", ".git"}
+
+
+def ws_list_dir(base, rel=""):
+    """列出 base 下某目录（目录优先，再按名排序）。rel 为空 = 根目录。"""
+    full = safe_path(base, rel) if rel else os.path.realpath(base)
+    if not os.path.isdir(full):
+        raise CtlError(f"不是目录：{rel or '/'}")
+    out = []
+    for name in sorted(os.listdir(full)):
+        if name in WS_SKIP_DIRS:
+            continue
+        p = os.path.join(full, name)
+        is_dir = os.path.isdir(p)
+        try:
+            st = os.stat(p)
+            sz = 0 if is_dir else st.st_size
+            mtime = int(st.st_mtime)
+        except OSError:
+            sz, mtime = 0, 0
+        relpath = (rel + "/" + name) if rel else name
+        out.append({"name": name, "path": relpath,
+                    "type": "dir" if is_dir else "file",
+                    "kb": None if is_dir else round(sz / 1024, 1),
+                    "mtime": mtime, "hidden": name.startswith(".")})
+    out.sort(key=lambda x: (x["type"] != "dir", x["name"].lower()))
+    return {"path": rel or "", "items": out}
+
+
+def _ws_ext_ok(rel):
+    ext = os.path.splitext(rel)[1].lower()
+    # 无扩展名也放行（Dockerfile、LICENSE 等）；有扩展名必须在白名单内
+    return ext in WS_TEXT_EXT or ext == ""
+
+
+def ws_read_file(base, rel):
+    """读工作区内任意文本文件（不卡 EDITABLE 白名单，但卡越界/大小/类型）。"""
+    if not rel:
+        raise CtlError("未指定文件")
+    p = safe_path(base, rel)
+    if not os.path.isfile(p):
+        raise CtlError("文件不存在")
+    if not _ws_ext_ok(rel):
+        raise CtlError(f"该类型不在可编辑文本类型内：{os.path.splitext(rel)[1] or '无扩展名'}")
+    sz = os.path.getsize(p)
+    if sz > MAX_FILE_BYTES:
+        raise CtlError(f"文件过大（{sz} 字节），拒绝在网页编辑")
+    with open(p, encoding="utf-8", errors="replace") as f:
+        content = f.read()
+    return {"path": rel, "content": content, "bytes": sz,
+            "mtime": int(os.path.getmtime(p)),
+            "backups": list_backups(base, rel)}
+
+
+def ws_write_file(base, rel, content, actor=""):
+    """写工作区内任意文本文件（备份 + 校验 + 原子写，与 write_file 同款保护）。"""
+    if not rel:
+        raise CtlError("未指定文件")
+    if content is None:
+        raise CtlError("内容为空")
+    p = safe_path(base, rel)
+    if not _ws_ext_ok(rel):
+        raise CtlError(f"该类型不在可编辑文本类型内：{os.path.splitext(rel)[1] or '无扩展名'}")
+    if len(content.encode("utf-8")) > MAX_FILE_BYTES:
+        raise CtlError("内容超过 512KB，拒绝写入")
+    msg = validate_content(rel, content)
+    if msg:
+        raise CtlError(f"语法校验未通过，已拒绝保存：\n{msg}")
+    with _lock_for(rel):
+        os.makedirs(os.path.dirname(p) or base, exist_ok=True)
+        old = ""
+        if os.path.isfile(p):
+            with open(p, encoding="utf-8", errors="replace") as f:
+                old = f.read()
+        if old == content:
+            return {"changed": False, "backup": None, "diff": ""}
+        bak = backup(base, rel)
+        tmp = p + ".dashboard.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, p)
+        diff = "".join(difflib.unified_diff(
+            old.splitlines(True), content.splitlines(True),
+            fromfile=f"旧 {rel}", tofile=f"新 {rel}", n=1))
+        audit(base, "ws.write", f"{rel}（备份 {bak}）", actor)
+        return {"changed": True, "backup": bak, "diff": diff[:8000]}
+
+
+# ============================================================
 # 4. MCP 服务器管理（保序保注释地改 config.yaml）
 # ============================================================
 
@@ -444,6 +544,25 @@ def mcp_toggle(base, name, enabled, actor=""):
     write_file(base, "config.yaml", _dump_cfg(cfg, path), actor=actor)
     audit(base, "mcp.toggle", f"{name} -> {'启用' if enabled else '禁用'}", actor)
     return True
+
+
+def mcp_test(mode, container, name):
+    """
+    对单个 MCP 服务器做一次连通测试（best-effort）。
+
+    直接复用 run_cmd + docker exec 机制，跑 `hermes mcp test <name>`。
+    不同 Hermes 版本子命令可能略有差异——输出原样返回，用户能直接看到发生了什么。
+    """
+    if not name:
+        raise CtlError("未指定服务器名")
+    cmd = ["hermes", "mcp", "test", name]
+    if mode == "docker":
+        rc, out, err = run_cmd(["docker", "exec", container or "hermes"] + cmd,
+                               timeout=90)
+    else:
+        rc, out, err = run_cmd(cmd, timeout=90)
+    text = (out or "") + (("\n" + err) if err else "")
+    return {"ok": rc == 0, "rc": rc, "output": text[:2000]}
 
 
 # ============================================================

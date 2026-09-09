@@ -8,10 +8,13 @@ services:
     # 飞牛上 hermes 用户通常是 1001；不准的话在 NAS 上 `id hermes` 查一下改这里。
     user: "1001:1001"
 
-    ports:
-      - "8080:8080"          # 飞牛上若被占用，改左边，如 "18080:8080"
+    # 内部端口：Caddy 在前端做反代（含 WebSocket upgrade），这里不再直接对公网暴露。
+    # 对外仍是 8080（由 caddy 服务发布），用户访问地址不变。
+    expose:
+      - "8081"
 
     environment:
+      PORT: "8081"
       HERMES_DIR: /opt/data   # 容器内的挂载点（对应 Hermes 的 /opt/data）
       HERMES_MODE: docker      # docker=用 docker exec 对话 | local=直接执行 hermes | auto=自动判断
       HERMES_CONTAINER: hermes
@@ -64,13 +67,46 @@ services:
       # 宿主机 docker 组 GID 用 `getent group docker | cut -d: -f3` 查（常见 999 / 994）。
       # ⚠️ docker.sock = 容器逃逸面，挂载即等同宿主机 root，只在信任的网络里开。
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # 把宿主机 docker 组的 GID 映射进容器，hermes 用户(1001) 才能访问 socket 去 docker exec。
-      # 用 `getent group docker | cut -d: -f3` 查实际 GID 替换 999（常见 999 / 994）。
-      group_add:
-        - "999"
-
-      # 升级按钮需要（可选）：把 Hermes 的 compose 目录挂进来
+      # 把 Hermes 的 compose 目录挂进来（可选，升级按钮需要）：
       # - /path/to/hermes-compose:/compose
+
+    # 把宿主机 docker 组的 GID 映射进容器，hermes 用户(1001) 才能访问 socket 去 docker exec。
+    # 用 `getent group docker | cut -d: -f3` 查实际 GID 替换 999（常见 999 / 994）。
+    group_add:
+      - "999"
 
     security_opt:
       - no-new-privileges:true
+
+    networks:
+      - hc
+
+  # ── 前置反代：发布 8080、透传 WebSocket、其余转发到 Flask ──
+  # 引入原因：Flask(WSGI) 处理不了 WebSocket 升级，导致嵌入的官方 dashboard
+  # 的 chat/terminal 实时功能失效。Caddy 在前端终结 WS 并直连官方后端。
+  caddy:
+    image: caddy:2-alpine
+    container_name: hermes-console-caddy
+    restart: unless-stopped
+    ports:
+      - "8080:80"            # 对外端口，和改造前一致（用户访问地址不变）
+    environment:
+      # Caddy 做 WebSocket 透传时直接连官方后端（与工作台用同一个 HERMES_API）。
+      # 共享 network 模式（http://hermes:9119）时，需把本服务也加入那个 network。
+      HERMES_API: "http://172.17.0.1:9119"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - hermes-console
+    networks:
+      - hc
+
+networks:
+  hc:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

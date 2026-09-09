@@ -399,6 +399,12 @@ canvas{width:100%;height:100%;display:block}
 .file-item{padding:9px 11px;border-radius:9px;cursor:pointer;border:1px solid transparent;transition:.14s}
 .file-item:hover{background:rgba(255,255,255,.05)}
 .file-item.active{background:rgba(0,212,170,.10);border-color:rgba(0,212,170,.35)}
+.crumb{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);font-weight:600}
+.file-item.is-dir .item-name{color:#e7c46b}
+.file-item.is-dir .item-name::before{background:#e7c46b !important}
+.file-item.is-hidden{opacity:.55}
+#wsEditor{min-height:460px}
+#mcpTestOut{margin-top:12px;white-space:pre-wrap;max-height:320px;overflow:auto}
 #fileEditor{
   width:100%;min-height:400px;resize:vertical;
   background:rgba(0,0,0,.34);border:1px solid var(--border);border-radius:11px;

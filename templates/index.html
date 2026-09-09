@@ -27,6 +27,7 @@
       <button class="nav-item" data-view="cost"><span class="nav-ico">¥</span><span>成本</span></button>
       <button class="nav-item" data-view="skills"><span class="nav-ico">◧</span><span>技能</span></button>
       <button class="nav-item" data-view="memory"><span class="nav-ico">◇</span><span>记忆</span></button>
+      <button class="nav-item" data-view="workspace"><span class="nav-ico">▤</span><span>工作区</span></button>
       <button class="nav-item" data-view="task"><span class="nav-ico">◷</span><span>任务</span></button>
       <button class="nav-item" data-view="scan"><span class="nav-ico">◎</span><span>体检</span></button>
       <button class="nav-item" data-view="audit"><span class="nav-ico">≡</span><span>记录</span></button>
@@ -221,6 +222,7 @@
           </div>
           <div class="warnbox" id="mcpWarn" hidden></div>
           <div class="list" id="mcpList"><div class="empty">加载中…</div></div>
+          <pre class="scan-out" id="mcpTestOut" hidden></pre>
 
           <div class="form-card">
             <div class="col-head">新增 / 更新</div>
@@ -428,6 +430,33 @@
       <div class="panel">
         <div class="panel-head"><h3>记忆文件</h3><span class="hint" id="memHint">—</span></div>
         <div class="list" id="memList"><div class="empty">加载中…</div></div>
+      </div>
+    </section>
+
+    <!-- ---------- 工作区（文件树浏览器） ---------- -->
+    <section class="view" id="view-workspace">
+      <div class="edit-wrap">
+        <div class="file-col">
+          <div class="col-head">
+            工作区 · <span id="wsCrumb" class="crumb">/</span>
+            <button class="btn tiny ghost" id="btnWsUp" title="返回上级目录">↑</button>
+          </div>
+          <div class="file-list" id="wsTree"><div class="empty">加载中…</div></div>
+          <div class="hint" style="padding:8px 12px">浏览整个 Hermes 数据目录；编辑自动备份，改崩可在「配置文件 → 备份历史」或此处回滚。</div>
+        </div>
+        <div class="editor-col">
+          <div class="panel-head">
+            <h3 id="wsTitle">未选择文件</h3>
+            <span class="hint" id="wsHint">—</span>
+          </div>
+          <textarea id="wsEditor" spellcheck="false" placeholder="从左侧选一个文件…"></textarea>
+          <div class="ed-bar">
+            <button class="btn" id="btnWsSave">保存（自动备份）</button>
+            <button class="btn ghost" id="btnWsBackups">备份历史</button>
+            <span class="hint" id="wsWarn"></span>
+          </div>
+          <pre class="scan-out" id="wsOut" hidden></pre>
+        </div>
       </div>
     </section>
 

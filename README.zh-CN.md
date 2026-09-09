@@ -11,7 +11,7 @@
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 纯 Flask + 原生 Canvas，**无前端构建、无第三方图表库、无外部监控依赖**。
-3 个 pip 依赖，40 个 API，12 个视图，12 种告警渠道，零 node_modules。
+3 个 pip 依赖，43 个 API，13 个视图，12 种告警渠道，零 node_modules。
 29 项冒烟测试 + GitHub Actions CI。
 
 ---
@@ -105,9 +105,9 @@ python app.py
 
 ---
 
-## 一、12 个视图
+## 一、13 个视图
 
-一共 **12 个视图**：
+一共 **13 个视图**：
 
 | 页 | 内容 | 为什么值得盯 |
 |---|---|---|
@@ -123,6 +123,7 @@ python app.py
 | **仪表盘** | 整页嵌入 Hermes 官方 Web 仪表盘（FastAPI + React SPA，19 个页面） | 会话/文件/日志/分析/多身份/IM 渠道一次全有，随上游更新自动变强 |
 | **功能** | Hermes 命令台：doctor / update / memory / curator / session / skills / mcp / tools / model / profile，白名单放行 | Hermes CLI 能干的，在网页里点点就行 |
 | **系统** | 版本号 + 上游版本比对、**一键升级 Hermes / 升级工作台（git pull）**、跑 doctor、修改登录密码 | 不用再手敲 git 和 update |
+| **工作区** | 浏览整个 Hermes 数据目录的文件树，读 / 写任意文本文件（自动备份 + 语法校验 + 越界防护） | 看见并改全貌，而不只是白名单里的配置 |
 
 ---
 
@@ -280,6 +281,11 @@ docker compose up -d --build
 
 需要网页对话时，把 `docker-compose.yml` 里 docker.sock 那两行注释打开
 （含 `group_add`，GID 用 `getent group docker | cut -d: -f3` 查）。
+
+> **Caddy 前置反代（已内置）**：`docker compose up -d` 会同时起 `caddy` 服务，由它对外发布 `8080`、
+> 并把 WebSocket 升级请求透传到官方后端 `HERMES_API`（Flask 是 WSGI，处理不了 WS）。
+> 工作台容器本身改为只监听内部 `8081`，不再直接对公网暴露。访问地址不变（`http://<NAS的IP>:8080`）。
+> 想换 nginx 或自建反代也行：只要让反代对 `/proxy/*` 的 `Connection: Upgrade` 请求直连 `HERMES_API` 即可。
 
 ### 方式 C：纯只读监控（最安全）
 
@@ -462,7 +468,10 @@ hermes dashboard --port 9119
 | Docker（工作台也是容器） | `http://172.17.0.1:9119` | 走 docker0 网桥访问宿主机 |
 | Docker（共享 network） | `http://hermes:9119` | 工作台和 Hermes 放同一个 docker network |
 
-> 代理层自动继承工作台的登录鉴权——未登录访问 `/proxy/*` 返回 401，不会把官方后端裸暴露。
+> 代理层自动继承工作台的登录鉴权——未登录访问 `/proxy/*` 的**普通 HTTP** 返回 401，不会把官方后端裸暴露。
+> 但 WebSocket（官方 dashboard 的实时聊天 / 终端）是 **WebSocket 协议**，Flask 是 WSGI 处理不了升级握手，
+> 因此由**前置的 Caddy 反代**直接终结 WS 并连到官方后端 `HERMES_API`；其鉴权沿用官方后端自身的 `ws-ticket`
+>（iframe 内先走 HTTP 拿 ticket，再开 WS）。详见下方「Docker 部署：Caddy 前置反代」。
 
 ---
 
@@ -550,7 +559,7 @@ hermes dashboard --port 9119
 
 ```
 hermes-console/
-├── app.py                  # Flask 后端：采集 + 登录守卫 + 40 个 API（1240 行）
+├── app.py                  # Flask 后端：采集 + 登录守卫 + 43 个 API（1293 行）
 ├── auth.py                 # 登录鉴权：PBKDF2 哈希 + 初始密码文件 + 强制改密 + 失败锁定
 ├── hermes_ctl.py           # 控制层：文件/MCP/env/cron/技能/备份/审计/配置开关/Hermes 命令
 ├── cost.py                 # token 与成本统计、价格表、预算
@@ -596,7 +605,7 @@ hermes-console/
 | `/api/probe` | GET/POST | 活体探测，`{"deep":true}` 触发 L3 |
 | `/api/chat` | POST | `{"message":"..."}` 转发给 Hermes |
 | `/api/chat/stream` | POST | 流式对话（SSE）：逐 token 返回 + 工具调用事件 |
-| `/proxy/<path>` | ANY | 代理转发到 Hermes 官方仪表盘后端（FastAPI :9119），自动继承鉴权 |
+| `/proxy/<path>` | ANY | 代理转发到 Hermes 官方仪表盘后端（FastAPI :9119）；普通 HTTP 继承工作台鉴权，WebSocket 升级由前置 Caddy 直连上游 |
 | `/api/skills` | GET | 技能列表 |
 | `/api/memories` | GET | 记忆文件列表 |
 | `/api/scan` | POST | `{"kind":"health"\|"security"}` 跑巡检脚本 |
@@ -610,9 +619,12 @@ hermes-console/
 | `/api/file` | GET/POST | 读 / 写配置（自动备份 + 语法校验） |
 | `/api/backups` | GET | 某文件的备份历史 |
 | `/api/rollback` | POST | 回滚（回滚前先存当前状态） |
+| `/api/workspace` | GET | **工作区**：列出 Hermes 数据目录下的任意目录（文件树浏览器） |
+| `/api/workspace/file` | GET/POST | **工作区**：读 / 写任意文本文件（自动备份 + 语法校验 + 越界防护） |
 | `/api/mcp` | GET/POST | MCP 列表 / 保存（保序保注释） |
 | `/api/mcp/delete` `/api/mcp/toggle` | POST | 删除 / 启停 |
 | `/api/mcp/reload` | POST | 热加载，不重启 |
+| `/api/mcp/test` | POST | 单个 MCP 服务器连通性测试（`hermes mcp test <name>`，best-effort） |
 | `/api/env` | GET/POST | .env 读写（密钥脱敏） |
 | `/api/providers` | GET | Provider 预设 |
 | `/api/providers/apply` | POST | 一键切换 Provider |
@@ -623,7 +635,7 @@ hermes-console/
 | `/api/action` | POST | `restart` / `upgrade` / `reload-mcp` |
 | `/api/audit` | GET | 变更审计（最近 120 条） |
 
-> 共 **40 个 API 端点**（另有 `/` 页面 与 `/proxy/<path>` 代理层）。
+> 共 **43 个 API 端点**（另有 `/` 页面 与 `/proxy/<path>` 代理层）。
 
 **成本与告警**
 

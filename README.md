@@ -11,7 +11,7 @@
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 Plain Flask + hand-drawn Canvas. **No frontend build, no chart library, no `node_modules`.**
-3 pip dependencies. 40 API endpoints. 12 views. 12 alert channels. 29 smoke tests + CI.
+3 pip dependencies. 43 API endpoints. 13 views. 12 alert channels. 29 smoke tests + CI.
 
 ---
 
@@ -54,6 +54,7 @@ And it lets you fix things from a browser instead of SSH-ing into the box at 1am
 | **Dashboard** | Embeds the **official Hermes web dashboard** (19 pages) via an authenticated proxy | Sessions, files, logs, analytics, profiles, channels — and it gets better as upstream ships |
 | **Functions** | Command deck for Hermes: `doctor` / `update` / `memory` / `curator` / `session` / `skills` / `mcp` / `tools` / `model` / `profile`, whitelist-gated | Anything the CLI can do, from a browser |
 | **System** | Version + upstream diff, **one-click upgrade for Hermes and for the console itself**, run `doctor`, change your password | Stop hand-running git and update commands |
+| **Workspace** | Browse the whole Hermes data dir as a file tree; read/write any text file with auto-backup + validation + path-traversal guard | See and edit everything, not just whitelisted config |
 
 ### Three-tier liveness probe
 
@@ -221,7 +222,10 @@ Single password, no username. A random initial password is generated to `DASHBOA
 
 ## Embedded official dashboard
 
-Hermes ships its own web dashboard (FastAPI + React, 19 pages). This console proxies it at `/proxy/<path>` and embeds it in an iframe — **inheriting this console's auth**, so it's never exposed raw.
+Hermes ships its own web dashboard (FastAPI + React, 19 pages). This console proxies it at `/proxy/<path>` and embeds it in an iframe.
+
+- **Plain HTTP** (status, config, assets, the `ws-ticket` endpoint) goes through this console's `/proxy/` layer and **inherits this console's login auth** (401 if not logged in) — never exposed raw.
+- **WebSocket** (the dashboard's live chat + terminal) is terminated by the **Caddy front reverse proxy** and forwarded straight to the upstream `HERMES_API`. Flask is WSGI and can't speak WebSocket, so the upgrade is handled before it reaches the app. Auth on the WS path relies on the upstream's own `ws-ticket` (the iframe fetches a ticket over HTTP first, then opens the socket).
 
 ```bash
 hermes dashboard --port 9119
@@ -237,7 +241,7 @@ hermes dashboard --port 9119
 
 ## API
 
-40 endpoints (plus `/` and the `/proxy/<path>` layer). Highlights:
+43 endpoints (plus `/` and the `/proxy/<path>` layer). Highlights:
 
 | Path | Method | Notes |
 |---|---|---|
@@ -245,11 +249,15 @@ hermes dashboard --port 9119
 | `/api/probe` | GET/POST | Liveness probe, `{"deep":true}` for L3 |
 | `/api/chat` | POST | Send a message |
 | `/api/chat/stream` | POST | Streaming chat (SSE) |
-| `/proxy/<path>` | ANY | Proxies the official dashboard, auth enforced |
+| `/proxy/<path>` | ANY | Proxies the official dashboard (HTTP inherits console auth; WebSocket upgrade handled by the Caddy front proxy) |
 | `/api/cost` | GET | Usage + budget report |
 | `/api/cost/record` | POST | Manual usage report |
 | `/api/notify` | GET/POST | Alert channels (GET returns schema) |
 | `/api/file` | GET/POST | Read/write config (backup + validation) |
+| `/api/workspace` | GET | List a directory in the Hermes data dir (the workspace tree) |
+| `/api/workspace/file` | GET/POST | Read / write any text file in the workspace (backup + validation) |
+| `/api/mcp` | GET/POST | List / save MCP servers (config.yaml `mcp_servers`, comment-preserving) |
+| `/api/mcp/test` | POST | Connectivity test for one MCP server (`hermes mcp test <name>`) |
 | `/api/rollback` | POST | Rollback (snapshots current state first) |
 | `/api/mcp` | GET/POST | MCP servers |
 | `/api/audit` | GET | Change audit (last 120) |

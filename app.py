@@ -599,6 +599,46 @@ def api_rollback():
         return jsonify({"ok": False, "error": str(e)}), 400
 
 
+# ---------- 工作区文件树（不限白名单，任意文本文件）----------
+@app.route("/api/workspace")
+def api_workspace():
+    rel = request.args.get("path", "")
+    try:
+        return jsonify({"ok": True, "readonly": READ_ONLY,
+                        **ctl.ws_list_dir(HERMES_DIR, rel)})
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:                                   # noqa
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/workspace/file")
+def api_workspace_file_get():
+    rel = request.args.get("path", "")
+    try:
+        return jsonify({"ok": True, **ctl.ws_read_file(HERMES_DIR, rel)})
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:                                   # noqa
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/workspace/file", methods=["POST"])
+def api_workspace_file_post():
+    g = _writable_guard()
+    if g:
+        return g
+    d = request.get_json(silent=True) or {}
+    rel, content = d.get("path", ""), d.get("content", "")
+    try:
+        r = ctl.ws_write_file(HERMES_DIR, rel, content, actor=_actor())
+        return jsonify({"ok": True, **r})
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:                                   # noqa
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/audit")
 def api_audit():
     return jsonify({"ok": True, "items": ctl.read_audit(HERMES_DIR, 120)})
@@ -663,6 +703,19 @@ def api_mcp_reload():
     try:
         r = ctl.reload_mcp(MODE, CONTAINER, actor=_actor(), base=HERMES_DIR)
         return jsonify({"ok": r["ok"], "output": r["output"]})
+    except Exception as e:                                   # noqa
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/mcp/test", methods=["POST"])
+def api_mcp_test():
+    d = request.get_json(silent=True) or {}
+    name = d.get("name", "")
+    try:
+        r = ctl.mcp_test(MODE, CONTAINER, name)
+        return jsonify({"ok": True, **r})
+    except ctl.CtlError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:                                   # noqa
         return jsonify({"ok": False, "error": str(e)}), 500
 

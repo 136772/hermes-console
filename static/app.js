@@ -52,10 +52,11 @@ const post = (url, body) => api(url, {
 /* ---------------- 视图切换 ---------------- */
 const TITLES = { overview: '总览', chat: '对话', config: '配置', cost: '成本', skills: '技能',
                  memory: '记忆', task: '任务', scan: '体检', audit: '变更记录',
-                 hermes: '功能', dashboard: '仪表盘', system: '系统' };
+                 hermes: '功能', dashboard: '仪表盘', system: '系统', workspace: '工作区' };
 const LOADERS = { skills: loadSkills, memory: loadMemory, task: loadCron,
                   audit: loadAudit, config: loadFiles, cost: loadCost,
-                  hermes: loadHermes, dashboard: loadDashboard, system: loadSystem };
+                  hermes: loadHermes, dashboard: loadDashboard, system: loadSystem,
+                  workspace: loadWorkspace };
 
 $$('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -357,6 +358,7 @@ async function loadMcp() {
       <div class="acts">
         <button class="btn tiny" data-tg="${escapeHtml(s.name)}" data-en="${s.enabled ? 0 : 1}">
           ${s.enabled ? '禁用' : '启用'}</button>
+        <button class="btn tiny" data-test="${escapeHtml(s.name)}">测试连接</button>
         <button class="btn tiny danger" data-del="${escapeHtml(s.name)}">删除</button>
       </div>
     </div>`).join('');
@@ -370,6 +372,7 @@ async function loadMcp() {
     const r = await post('/api/mcp/delete', { name: b.dataset.del });
     r.ok ? (toast('已删除'), loadMcp()) : toast(r.error, true);
   }));
+  $$('#mcpList [data-test]').forEach(b => b.addEventListener('click', () => testMcp(b)));
 }
 
 $('#btnMcpSave').addEventListener('click', async () => {
@@ -389,6 +392,113 @@ $('#btnReloadMcp').addEventListener('click', async () => {
   const r = await post('/api/mcp/reload', {});
   toast(r.ok ? '热加载完成' : (r.output || r.error || '失败'), !r.ok);
 });
+
+/* ---------------- 工作区（文件树浏览器） ---------------- */
+async function loadWorkspace() {
+  await wsRender('');
+}
+
+async function wsRender(rel) {
+  state.wsPath = rel;
+  $('#wsCrumb').textContent = rel ? '/' + rel : '/';
+  const d = await api('/api/workspace?path=' + encodeURIComponent(rel));
+  const box = $('#wsTree');
+  if (!d.ok) { box.innerHTML = '<div class="empty">' + escapeHtml(d.error || '加载失败') + '</div>'; return; }
+  if (d.readonly) $('#wsWarn').textContent = '只读模式（挂载为 :ro），保存会被拒绝';
+  const items = d.items || [];
+  if (!items.length) { box.innerHTML = '<div class="empty">空目录</div>'; return; }
+  box.innerHTML = items.map(f => `
+    <div class="file-item ${f.type === 'dir' ? 'is-dir' : ''} ${f.hidden ? 'is-hidden' : ''}"
+         data-path="${escapeHtml(f.path)}" data-type="${f.type}">
+      <div class="item-name">${f.type === 'dir' ? '▸ ' : '· '}${escapeHtml(f.name)}</div>
+      <div class="item-desc">${f.type === 'dir' ? '目录' : (f.kb + 'KB')}${f.hidden ? ' · 隐藏' : ''}</div>
+    </div>`).join('');
+  $$('#wsTree .file-item').forEach(el => {
+    el.addEventListener('click', () => {
+      if (el.dataset.type === 'dir') wsRender(el.dataset.path);
+      else openWsFile(el.dataset.path, el);
+    });
+  });
+}
+
+async function openWsFile(path, el) {
+  $$('#wsTree .file-item').forEach(x => x.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const d = await api('/api/workspace/file?path=' + encodeURIComponent(path));
+  if (!d.ok) { toast(d.error, true); return; }
+  state.wsFile = d;
+  state.wsDirty = false;
+  $('#wsTitle').textContent = d.path;
+  $('#wsHint').textContent = `修改于 ${fmtDT(d.mtime)} · ${d.backups.length} 份历史备份`;
+  $('#wsEditor').value = d.content;
+  $('#wsOut').hidden = true;
+  updateWsDirty();
+}
+
+function updateWsDirty() {
+  const d = state.wsFile;
+  const dirty = d && $('#wsEditor').value !== d.content;
+  state.wsDirty = dirty;
+  $('#btnWsSave').textContent = dirty ? '保存（有未保存改动）' : '保存（自动备份）';
+}
+
+$('#wsEditor').addEventListener('input', updateWsDirty);
+
+$('#btnWsSave').addEventListener('click', async () => {
+  if (!state.wsFile) return toast('先选一个文件', true);
+  if (!state.wsDirty) return toast('没有改动');
+  const d = await post('/api/workspace/file', {
+    path: state.wsFile.path, content: $('#wsEditor').value
+  });
+  if (!d.ok) { toast(d.error, true); $('#wsOut').hidden = false; $('#wsOut').textContent = d.error; return; }
+  state.wsFile.content = $('#wsEditor').value;
+  updateWsDirty();
+  if (d.changed) {
+    toast('已保存并备份：' + d.backup);
+    $('#wsOut').hidden = false; $('#wsOut').textContent = d.diff || '（无差异）';
+    loadAudit();
+  } else toast('内容无变化');
+});
+
+$('#btnWsUp').addEventListener('click', async () => {
+  const cur = state.wsPath || '';
+  if (!cur) return;
+  const up = cur.includes('/') ? cur.slice(0, cur.lastIndexOf('/')) : '';
+  await wsRender(up);
+});
+
+$('#btnWsBackups').addEventListener('click', async () => {
+  if (!state.wsFile) return;
+  const d = await api('/api/backups?path=' + encodeURIComponent(state.wsFile.path));
+  $('#wsOut').hidden = false;
+  if (!d.ok || !d.items.length) { $('#wsOut').textContent = '暂无备份'; return; }
+  $('#wsOut').innerHTML = d.items.map(b =>
+    `<div class="bk"><span>${escapeHtml(b.name)}</span><span>${b.kb}KB</span>` +
+    `<span>${fmtDT(b.mtime)}</span><button class="btn tiny" data-bk="${escapeHtml(b.name)}">回滚</button></div>`
+  ).join('');
+  $$('#wsOut [data-bk]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm(`确认回滚到 ${btn.dataset.bk}？\n当前内容会先自动备份。`)) return;
+      const r = await post('/api/rollback', { path: state.wsFile.path, backup: btn.dataset.bk });
+      if (r.ok) { toast('已回滚'); openWsFile(state.wsFile.path); loadAudit(); }
+      else toast(r.error, true);
+    });
+  });
+});
+
+/* ---------------- MCP 连通测试 ---------------- */
+async function testMcp(btn) {
+  const name = btn.dataset.test;
+  btn.disabled = true; btn.textContent = '测试中…';
+  const r = await post('/api/mcp/test', { name });
+  btn.disabled = false; btn.textContent = '测试连接';
+  const pre = $('#mcpTestOut');
+  pre.hidden = false;
+  if (!r.ok) { pre.textContent = '请求失败：' + (r.error || ''); toast(r.error, true); return; }
+  const out = (r.output || '').trim() || (r.ok ? '（无输出，rc=0）' : '（无输出）');
+  pre.textContent = `[${r.ok ? 'OK' : 'FAIL'} rc=${r.rc}] ${name}\n${out}`;
+  toast(r.ok ? '连通性测试通过' : '测试失败（见下方输出）', !r.ok);
+}
 
 /* ---------------- Provider / env ---------------- */
 async function loadProviders() {
