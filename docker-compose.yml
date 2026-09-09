@@ -1,6 +1,8 @@
 services:
   hermes-console:
-    build: .
+    # 默认拉 Docker Hub 多架构镜像（amd64/arm64），免本地 build。
+    # 想本地构建改成：`build: .`（并删掉下面 image 行）。
+    image: 136772/hermes-console:latest
     container_name: hermes-console
     restart: unless-stopped
 

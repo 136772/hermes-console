@@ -55,6 +55,15 @@ Happy to adjust wording or placement if you'd prefer a different emoji or phrasi
 
 > ⚠️ 被拒也正常。如果被拒，可以改成去他们的 [Discord](https://discord.gg/NousResearch) 的 showcase 频道发一条，效果类似。
 
+### 当前状态（2026-09-09）
+
+PR [#106093](https://github.com/NousResearch/hermes-agent/pull/106093) **已提交、open、未合并、`mergeable=True`（无冲突）**。
+现在就是等上游 maintainer 合并。你可以：
+
+- **礼貌顶一次**：在 PR 下留一条友善评论（如「Hi, any chance for a review? Happy to adjust wording.」），别刷屏、别催。
+- **别重复提**：已经 open 就不要再开第二个 PR，会被当 spam。
+- **兜底**：若两周无响应，去 Discord showcase 频道发一条（文案见第 2 节 Reddit 版改个开头即可）。
+
 ---
 
 ## 2. Reddit
@@ -187,7 +196,8 @@ The bit I'd defend: "process running" ≠ "agent works". Memory dir can silently
 3. 到 GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret：
    - `DOCKERHUB_USERNAME` = 你的 Docker Hub 用户名
    - `DOCKERHUB_TOKEN` = 上面那个 token
-4. 打个 tag 触发构建：`git tag v1.3.1 && git push origin v1.3.1`
+4. 打一个新 tag 触发构建（当前最新 release 是 `v1.5.0`，下次更新打 `v1.5.1` 之类）：
+   `git tag v1.5.1 && git push origin v1.5.1`
 
 没配 secret 时 workflow 会**自动跳过**，不会让 CI 变红，所以现在不配也没事。
 

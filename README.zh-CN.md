@@ -283,6 +283,16 @@ nohup python3 app.py > dashboard.log 2>&1 &
 docker compose up -d --build
 ```
 
+> **免本地构建**：配好 Docker Hub 自动构建后，可直接拉多架构预构建镜像（amd64 / arm64），
+> 不用在 NAS 上现场 `build`：
+> ```bash
+> docker compose pull          # 拉 136772/hermes-console:latest（compose 已配好）
+> docker compose up -d
+> # 想锁版本：docker compose pull hermes-console && docker compose up -d
+> #   镜像 tag 也可写成 136772/hermes-console:v1.5.0
+> ```
+> Caddy 反代已内置，`docker compose up -d` 会同时起 `caddy`（发布 8080 + 透传 WebSocket）。
+
 需要网页对话时，把 `docker-compose.yml` 里 docker.sock 那两行注释打开
 （含 `group_add`，GID 用 `getent group docker | cut -d: -f3` 查）。
 

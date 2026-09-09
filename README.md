@@ -157,6 +157,16 @@ Docker:
 docker compose up -d --build
 ```
 
+Pre-built multi-arch image (amd64 / arm64) — skip the local build:
+
+```bash
+# pull from Docker Hub, then run (Caddy reverse proxy is included)
+docker compose pull
+docker compose up -d
+# or pin a version: docker compose pull hermes-console && docker compose up -d
+#   image: 136772/hermes-console:v1.5.0
+```
+
 ### Deployment modes
 
 | Mode | How | Trade-off |
