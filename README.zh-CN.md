@@ -16,6 +16,8 @@
 
 ---
 
+所有 13 个视图（包括工作区编辑器）都做了移动端响应式，390 px 手机可用。
+
 ## 截图
 
 | 总览 | 对话 |
@@ -29,6 +31,10 @@
 | 工作区 | MCP 管理 |
 |:---:|:---:|
 | ![workspace](docs/screenshots/05-workspace.png) | ![mcp](docs/screenshots/06-mcp.png) |
+
+| 移动端（抽屉） | 移动端（工作区） |
+|:---:|:---:|
+| ![mobile-drawer](docs/screenshots/07b-mobile-drawer.png) | ![mobile-workspace](docs/screenshots/07c-mobile-workspace.png) |
 
 ---
 

@@ -66,6 +66,7 @@ $$('.nav-item').forEach(btn => {
     $$('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
     $('#viewTitle').textContent = TITLES[v] || v;
     if (LOADERS[v]) LOADERS[v]();
+    closeNavMobile();
   });
 });
 
@@ -865,6 +866,21 @@ async function loadDashboard() {
 }
 
 /* ---------------- 事件 ---------------- */
+
+/* 移动端：汉堡菜单 + 遮罩抽屉 */
+const _navEl = document.querySelector('.sidebar');
+const _scrimEl = document.getElementById('scrim');
+function closeNavMobile() {
+  if (_navEl) _navEl.classList.remove('open');
+  if (_scrimEl) _scrimEl.classList.remove('show');
+}
+const _btnMenu = document.getElementById('btnMenu');
+if (_btnMenu) _btnMenu.addEventListener('click', () => {
+  const open = _navEl.classList.toggle('open');
+  _scrimEl.classList.toggle('show', open);
+});
+if (_scrimEl) _scrimEl.addEventListener('click', closeNavMobile);
+
 $('#btnSend').addEventListener('click', send);
 $('#chatInput').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }

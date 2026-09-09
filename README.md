@@ -15,6 +15,8 @@ Plain Flask + hand-drawn Canvas. **No frontend build, no chart library, no `node
 
 ---
 
+All 13 views, including the workspace editor, are responsive down to 390 px phones.
+
 ## Screenshots
 
 | Overview | Chat |
@@ -28,6 +30,10 @@ Plain Flask + hand-drawn Canvas. **No frontend build, no chart library, no `node
 | Workspace | MCP |
 |:---:|:---:|
 | ![workspace](docs/screenshots/05-workspace.png) | ![mcp](docs/screenshots/06-mcp.png) |
+
+| Mobile (drawer) | Mobile (workspace) |
+|:---:|:---:|
+| ![mobile-drawer](docs/screenshots/07b-mobile-drawer.png) | ![mobile-workspace](docs/screenshots/07c-mobile-workspace.png) |
 
 ---
 

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-09-09
+
+### Added
+- 移动端响应式：侧边栏变抽屉、卡片单列、工作区分栏上下堆叠、顶栏自适应换行
+- 新增移动端截图（07-mobile-overview / 07b-mobile-drawer / 07c-mobile-workspace）
+
 ## [1.5.0] - 2026-09-09
 
 ### Added
