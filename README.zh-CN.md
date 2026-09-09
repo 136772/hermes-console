@@ -26,6 +26,10 @@
 |:---:|:---:|
 | ![cost](docs/screenshots/03-cost.png) | ![config](docs/screenshots/04-config.png) |
 
+| 工作区 | MCP 管理 |
+|:---:|:---:|
+| ![workspace](docs/screenshots/05-workspace.png) | ![mcp](docs/screenshots/06-mcp.png) |
+
 ---
 
 ## Quick Start

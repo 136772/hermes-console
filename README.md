@@ -25,6 +25,10 @@ Plain Flask + hand-drawn Canvas. **No frontend build, no chart library, no `node
 |:---:|:---:|
 | ![cost](docs/screenshots/03-cost.png) | ![config](docs/screenshots/04-config.png) |
 
+| Workspace | MCP |
+|:---:|:---:|
+| ![workspace](docs/screenshots/05-workspace.png) | ![mcp](docs/screenshots/06-mcp.png) |
+
 ---
 
 ## Why
