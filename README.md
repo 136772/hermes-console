@@ -300,6 +300,22 @@ Full table in [README.zh-CN.md](README.zh-CN.md#十五api).
 
 ---
 
+## Roadmap
+
+What's shipped is stable and battle-tested on a FNOS NAS; the items below are **not implemented yet** — they're the bench. Order is not a promise, tell me what you want first via [Issues](https://github.com/136772/hermes-console/issues).
+
+| Area | Candidate | Status quo it would fix |
+|---|---|---|
+| **Chat** | Markdown rendering + code highlighting in bubbles; session export (MD / JSON) | Replies are plain text right now |
+| **Agents** | Scheduled team runs (cron trigger), run history & replay, human-approval step in pipelines | Orchestration runs on demand, once; nothing is persisted |
+| **Cost** | Per-agent / per-session cost attribution; month-end forecast | Currently attributed by model only |
+| **Metrics** | Persist trend history across restarts (SQLite) | The 60-min trend resets when the console restarts |
+| **Security** | TOTP two-factor on top of the single password | Password + lockout only |
+| **Editor** | Cross-file search & replace in the workspace tree | Per-file only |
+| **Scale** | Monitor multiple Hermes instances / data dirs from one console | One console = one `HERMES_DIR` today |
+
+---
+
 ## Contributing
 
 PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and feature requests via [Issues](https://github.com/136772/hermes-console/issues).
